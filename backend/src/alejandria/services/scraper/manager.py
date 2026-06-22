@@ -553,6 +553,30 @@ class ScraperManager:
                 # Track visited page URLs so a chapter-rolling-over "next"
                 # link doesn't loop us into the next chapter's first page.
                 visited_urls: set[str] = set()
+                # Boundary check: if the next URL has a different
+                # ``?chapter=...`` id than the URL the user pasted, we are
+                # looking at a "next chapter" link and should stop
+                # cleanly instead of bleeding into Tomo 2. Sites that
+                # don't use ``?chapter=`` (or where the user pastes a URL
+                # without one) get None here and the check is a no-op.
+                import re as _re_chap
+
+                m_chap = _re_chap.search(r"chapter=([^&]+)", url)
+                original_chapter_id: str | None = (
+                    m_chap.group(1) if m_chap else None
+                )
+                # Consecutive empty / all-repeat pages. The previous
+                # implementation broke on the first such page (treated
+                # empty as "end of chapter") which made long chapters
+                # like the user's 215-page Berserk stop at page 29 any
+                # time the server briefly served a page without images.
+                # Now we tolerate a small streak before declaring
+                # end-of-chapter — each iteration is still ~2-5s of work
+                # plus the inter-page delay, so 5 in a row means we've
+                # gone ~30s without any content and the right move is to
+                # package what we have and let the user know.
+                empty_streak = 0
+                _EMPTY_STREAK_FAIL = 5
                 # Track image src URLs seen so far. Used to detect
                 # "no new page content" — if every image on the current
                 # page is already in this set, the chapter has rolled
@@ -669,7 +693,35 @@ class ScraperManager:
                                     job.completed_at = datetime.now(timezone.utc)
                                     db.commit()
                             return
-                        break
+                        # Not bounced — the page was just empty. Could be
+                        # a transient render hiccup (YupManga sometimes
+                        # serves an empty stub on the boundary page, the
+                        # page that exists in the URL pattern but has no
+                        # panel). Bump the empty streak; only treat it
+                        # as end-of-chapter after several in a row.
+                        empty_streak += 1
+                        logger.warning(
+                            "scraper_empty_page",
+                            job_id=job_id,
+                            page=page_index,
+                            url=current_url[:120],
+                            final_url=snapshot.final_url,
+                            streak=empty_streak,
+                        )
+                        if empty_streak >= _EMPTY_STREAK_FAIL:
+                            logger.info(
+                                "scraper_end_of_chapter_empty_streak",
+                                job_id=job_id,
+                                page=page_index,
+                                streak=empty_streak,
+                            )
+                            break
+                        # Skip the next_url / save block — there's
+                        # nothing to save. Just retry the same page
+                        # next iteration (URL increment is deterministic
+                        # so we'll have moved to ?page=N+1 by then).
+                        await asyncio.sleep(1)
+                        continue
 
                     # Re-open a page for the next_url computation. We need a
                     # fresh Page because the adapter may have closed it.
@@ -704,6 +756,13 @@ class ScraperManager:
                                 continue
                             seen_image_srcs.add(img_url)
                             new_image_urls.append(img_url)
+                        # Reset empty streak on any page that delivered
+                        # *something*, even if it was all repeats. The
+                        # chapter is clearly still being served; we
+                        # don't want a single all-chrome page to push
+                        # us into the "end of chapter" branch above.
+                        if snapshot.image_urls:
+                            empty_streak = 0
 
                         if (
                             repeats_on_page
@@ -803,6 +862,38 @@ class ScraperManager:
                             except Exception as e:  # noqa: BLE001
                                 logger.warning("scraper_next_url_failed", error=str(e))
                                 next_url = None
+
+                            # Chapter boundary check: if the next URL
+                            # has a different ``?chapter=...`` id than
+                            # the one the user pasted, we are looking
+                            # at a "next chapter" link (Tomo 2,
+                            # whatever's next in the series). Stop
+                            # cleanly so the user gets exactly what
+                            # they asked for — the current chapter
+                            # only — instead of bleeding into the
+                            # next one. The original working version
+                            # kept going, but the user explicitly
+                            # asked to scope each job to one chapter.
+                            if next_url and original_chapter_id:
+                                m_next = _re_chap.search(
+                                    r"chapter=([^&]+)", next_url
+                                )
+                                next_chapter_id = (
+                                    m_next.group(1) if m_next else None
+                                )
+                                if (
+                                    next_chapter_id
+                                    and next_chapter_id
+                                    != original_chapter_id
+                                ):
+                                    logger.info(
+                                        "scraper_chapter_boundary_detected",
+                                        job_id=job_id,
+                                        page=page_index,
+                                        original_chapter=original_chapter_id,
+                                        next_chapter=next_chapter_id,
+                                    )
+                                    next_url = None
                     finally:
                         try:
                             await page.close()

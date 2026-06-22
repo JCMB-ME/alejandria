@@ -72,6 +72,28 @@ async def fetch_image(
     Raises ValueError on any cap violation. The bytes returned have NOT been
     decoded to a bitmap (Pillow only read the header).
     """
+    # Strip ``&context=...`` (and similar YupManga quirks) before hitting
+    # the network. YupManga's reader renders page 30 with an image src
+    # like ``image-proxy-v2.php?chapter=X&page=30&token=Y&context=r`` —
+    # the ``context=r`` query parameter is a client-side hint only, and
+    # the proxy returns 403 ``Invalid context`` when it's present. The
+    # actual panel image is downloadable from the same URL minus that
+    # parameter. Stripping here means we don't need to special-case
+    # YupManga in the adapter — the URL the browser hands us works
+    # after this one normalisation. Other ``&foo=bar`` junk that the
+    # proxy might tolerate is left alone.
+    if "context=" in url:
+        from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+        parts = urlsplit(url)
+        kept = [
+            (k, v)
+            for (k, v) in parse_qsl(parts.query, keep_blank_values=True)
+            if k != "context"
+        ]
+        url = urlunsplit(
+            parts._replace(query=urlencode(kept, doseq=True))
+        )
     buf = BytesIO()
     bytes_on_wire = 0
     content_type = ""
