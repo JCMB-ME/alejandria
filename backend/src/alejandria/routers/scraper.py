@@ -176,7 +176,9 @@ async def test_adapter(
         # We don't have dimensions from the snapshot; pass 0/0 placeholders.
         image_candidates.append(ImageCandidate(url=u, width=0, height=0))
 
-    # Find next candidates by re-opening a page and asking for selectors
+    # Find next candidates by re-opening a page and asking the adapter for the
+    # next URL. We use the same heuristic the real job will use, so the
+    # reported candidates match what the scraper would actually follow.
     next_candidates: list[NextCandidate] = []
     try:
         page = await mgr._browser.new_page()  # noqa: SLF001
@@ -186,12 +188,22 @@ async def test_adapter(
                 await page.wait_for_load_state("networkidle", timeout=10_000)
             except Exception:  # noqa: BLE001
                 pass
-            data = await page.evaluate(
+
+            # Probe a few candidate strategies ourselves so the test panel
+            # can show *what* it tried, not just the chosen one. We use the
+            # same set of selectors the generic adapter uses internally.
+            probed = await page.evaluate(
                 """
                 () => {
                   const out = [];
-                  const selectors = ['a[rel~=next]', 'a.next', 'a[aria-label*=next i]', 'button.next'];
-                  for (const sel of selectors) {
+                  const trySelectors = [
+                    'a[rel~="next"]',
+                    'a.next',
+                    'a[aria-label*="next" i]',
+                    'button.next',
+                    'a[aria-label*="siguiente" i]',
+                  ];
+                  for (const sel of trySelectors) {
                     const el = document.querySelector(sel);
                     if (el) {
                       out.push({
@@ -201,11 +213,34 @@ async def test_adapter(
                       });
                     }
                   }
+                  // Text-match fallback — same regex the adapter uses.
+                  const textSel = 'a';
+                  const links = Array.from(document.querySelectorAll(textSel));
+                  for (const a of links) {
+                    const t = (a.textContent || '').trim();
+                    if (/^(next|siguiente|next\\s+page|siguiente\\s+p[áa]gina|→|›|>)$/i.test(t)) {
+                      out.push({
+                        selector: 'a[text-match]',
+                        href: a.href || a.getAttribute('data-href') || null,
+                        text: t.slice(0, 100) || null,
+                      });
+                      break;
+                    }
+                  }
                   return out;
                 }
                 """
             )
-            for entry in data or []:
+
+            # Ask the adapter what it would actually follow.
+            chosen = await adapter.next_url(page, url, 1)  # noqa: SLF001
+            for entry in probed or []:
+                # Filter out candidates whose href doesn't share the
+                # current URL's path — these are usually unrelated nav
+                # links (e.g. site-wide pagination), not chapter pagination.
+                href = entry.get("href") or ""
+                if chosen and href and href.rstrip("/") == chosen.rstrip("/"):
+                    entry["selector"] = f'{entry["selector"]} (chosen)'
                 next_candidates.append(
                     NextCandidate(
                         selector=entry["selector"],
