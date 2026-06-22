@@ -183,10 +183,11 @@
     if (pdfDoc) {
       try { pdfDoc.destroy(); } catch {}
       // Detach the resize listeners we registered in initPdfReader.
-      // Without this, every visit to a PDF would leak two listeners.
+      // Without this, every visit to a PDF would leak listeners.
       if (typeof window !== 'undefined') {
         window.visualViewport?.removeEventListener('resize', refitOnResize);
         window.removeEventListener('orientationchange', refitOnResize);
+        window.removeEventListener('resize', refitOnResize);
       }
     }
     if (cbzPages.length) {
@@ -404,8 +405,19 @@
     // this initial computation inline so the first paint is already
     // at the right size — no flash of the 1.5 default.
     try {
-      const targetWidth = container ? container.clientWidth : 800;
-      await refitPdf(targetWidth);
+      // Wait one extra tick in case the container just got bound to
+      // the DOM and `clientWidth` is still 0 — otherwise the fit
+      // would lock pdfScale to a wrong value until the next resize.
+      await tick();
+      const targetWidth = container?.clientWidth || 0;
+      if (targetWidth > 0) {
+        await refitPdf(targetWidth);
+      } else {
+        // Last-resort fallback: assume 800. This path should be rare
+        // because window.resize below will fix it as soon as the
+        // browser paints.
+        await refitPdf(800);
+      }
     } catch (e) {
       console.error("Error calculating PDF fit scale:", e);
     }
@@ -415,10 +427,13 @@
     // Refit on viewport changes. visualViewport fires on iOS Safari
     // when the address bar collapses/expands and on Android Chrome
     // when the keyboard appears; orientationchange catches the
-    // rotation that visualViewport misses in some browsers.
+    // rotation that visualViewport misses in some browsers; plain
+    // window.resize catches the desktop case of dragging the window
+    // edge, which fires neither of the above on most browsers.
     if (typeof window !== 'undefined') {
       window.visualViewport?.addEventListener('resize', refitOnResize);
       window.addEventListener('orientationchange', refitOnResize);
+      window.addEventListener('resize', refitOnResize);
     }
   }
 
@@ -456,18 +471,18 @@
     const ctx = canvas.getContext('2d')!;
     canvas.height = viewport.height;
     canvas.width = viewport.width;
-    // `block w-full h-auto` makes the canvas respect the parent's
-    // width while preserving its intrinsic aspect ratio. `mx-auto`
-    // centers it on wide screens. The previous `max-w-full` only
-    // capped the canvas to the container width but did not stretch
-    // it, so the canvas kept its old (wrong) pixel size on mobile.
-    canvas.className = 'block w-full h-auto max-w-full shadow-soft rounded mx-auto';
-    // touch-action: pinch-zoom pan-y lets the browser handle BOTH
-    // pinch-to-zoom AND vertical scroll on the canvas. The single-
-    // finger horizontal swipe (which we use for page turning) still
-    // reaches the JS handler because horizontal pan is not in the
-    // allow list. Without `pinch-zoom`, the browser's native two-
-    // finger zoom was disabled and the canvas could not be zoomed.
+    // Render the canvas at its NATIVE pixel size (viewport.width ×
+    // viewport.height from PDF.js, already includes pdfScale). We
+    // intentionally do NOT add `w-full` here — that would stretch a
+    // canvas drawn at 918px up to whatever the container is (1200px
+    // on a desktop, 360px on mobile), creating a second CSS scale on
+    // top of pdfScale and making the A+/A- buttons feel ineffective.
+    // `max-w-full` still caps the canvas at the container width so it
+    // never overflows on a narrow viewport. `mx-auto` centers it on
+    // wide screens. Touch-action stays pinch-zoom pan-y so the user
+    // can use the browser's native pinch gesture as a second zoom
+    // channel beyond the A+/A- buttons.
+    canvas.className = 'block max-w-full h-auto shadow-soft rounded mx-auto';
     canvas.style.touchAction = 'pinch-zoom pan-y';
     bookElement.innerHTML = '';
     bookElement.appendChild(canvas);
@@ -536,12 +551,13 @@
     const img = document.createElement('img');
     img.src = url;
     img.alt = `Página ${pageNum}`;
-    // `block w-full h-auto` makes the image scale to the container's
-    // width while keeping the original aspect ratio. The previous
-    // `max-w-full` only capped the width but the image kept its
-    // intrinsic pixel dimensions, so on a 360px phone the manga page
-    // was being clipped at 360px but at 2x its natural resolution.
-    img.className = 'block w-full h-auto max-w-full shadow-soft rounded mx-auto';
+    // The image width is set inline below via `img.style.width =
+    // ${cbzScale * 100}%`, so the className intentionally omits
+    // `w-full` — including it would force a competing 100% width
+    // and then the inline style would fight with the class on every
+    // A+/A- press. `max-w-full` is still here as a safety cap so the
+    // image never overflows the container when cbzScale < 1.
+    img.className = 'block h-auto max-w-full shadow-soft rounded mx-auto';
     // Apply the user's chosen zoom level by overriding `width` as a
     // percentage of the container. cbzScale == 1.0 means fill the
     // container; cbzScale > 1.0 zooms in (image overflows and the
