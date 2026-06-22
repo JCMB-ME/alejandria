@@ -58,8 +58,13 @@ class GenericAdapter:
                 }
                 """
             )
+            # Capture the URL we ended up on after any redirects so the
+            # manager can detect a "session lost" bounce (rate limit,
+            # token expiry) and fail loudly instead of silently ending.
+            final_url = page.url
             return PageSnapshot(
-                image_urls=[c["src"] for c in (candidates or []) if c.get("src")]
+                image_urls=[c["src"] for c in (candidates or []) if c.get("src")],
+                final_url=final_url,
             )
         finally:
             try:

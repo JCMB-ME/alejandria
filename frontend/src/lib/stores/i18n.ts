@@ -185,8 +185,8 @@ export const translations = {
     test_again: "Test Speed",
     recommended: "Recommended",
     // Web scraper
-    scraper_title: 'Web scraper',
-    scraper_desc: 'Paste a URL to a page-by-page online book (image scans, comics, or simple readers). The server will walk the pages, then assemble the result as PDF / EPUB / CBZ.',
+    scraper_title: 'YUPMANGA',
+    scraper_desc: 'Download manga from YupManga and most other page-by-page online readers. Paste a chapter URL and the tool will walk every page, then assemble the result as PDF / EPUB / CBZ — works on any site that exposes pages one at a time, not just YupManga.',
     scraper_url_placeholder: 'https://example.com/book/1',
     scraper_formats_label: 'Output formats',
     scraper_destinations_label: 'Where to send the result',
@@ -394,8 +394,8 @@ export const translations = {
     test_again: "Probar velocidad",
     recommended: "Recomendado",
     // Web scraper
-    scraper_title: 'Extractor web',
-    scraper_desc: 'Pega una URL de un libro en línea página por página (escaneos, cómics o lectores simples). El servidor recorrerá las páginas y luego ensamblará el resultado como PDF / EPUB / CBZ.',
+    scraper_title: 'YUPMANGA',
+    scraper_desc: 'Descarga manga desde YupManga y casi cualquier lector página por página. Pega la URL de un capítulo y la herramienta recorrerá todas las páginas para armar el resultado en PDF / EPUB / CBZ — funciona con casi cualquier sitio que muestre las páginas de una en una, no solo YupManga.',
     scraper_url_placeholder: 'https://ejemplo.com/libro/1',
     scraper_formats_label: 'Formatos de salida',
     scraper_destinations_label: 'Dónde enviar el resultado',

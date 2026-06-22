@@ -21,6 +21,11 @@ class PageSnapshot:
     next_url: str | None = None
     cookies_to_persist: dict[str, str] = field(default_factory=dict)
     headers_to_persist: dict[str, str] = field(default_factory=dict)
+    # The URL we ended up on after any redirects. Differs from the
+    # request URL when the site bounced us (session expired, rate
+    # limited, captcha). The manager uses this to fail loudly with a
+    # "session lost" error instead of silently marking the job done.
+    final_url: str | None = None
 
 
 @runtime_checkable

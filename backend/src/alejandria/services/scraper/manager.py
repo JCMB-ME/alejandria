@@ -71,6 +71,24 @@ def _re_find_calibre_id(stdout: str) -> int | None:
     return None
 
 
+def _safe_filename(name: str) -> str:
+    """Sanitize a title for use as a filename.
+
+    Strips characters Windows / macOS / Linux all reject, collapses
+    whitespace, and caps the length. Used for the packager output path
+    so the resulting book shows up in the library with its real name
+    rather than a generic "out".
+    """
+    if not name:
+        return "Scraped Book"
+    # Replace any of: \ / : * ? " < > | | control chars
+    s = re.sub(r'[\\/:|*?"<>\x00-\x1f]', "_", name)
+    s = re.sub(r"\s+", " ", s).strip()
+    if len(s) > 120:
+        s = s[:120].rstrip()
+    return s or "Scraped Book"
+
+
 class ScraperManager:
     """Top-level orchestrator for the scraper subsystem."""
 
@@ -429,6 +447,53 @@ class ScraperManager:
                     snapshot: PageSnapshot = await adapter.fetch_page(self._browser, current_url)
                     if not snapshot.image_urls:
                         # No images — either a bad page or end of book.
+                        # Distinguish "session lost" (the site redirected
+                        # us away from the chapter — token expired or
+                        # rate limited) from "we ran past the end of the
+                        # chapter". The former should fail loudly so the
+                        # user knows to re-authenticate.
+                        #
+                        # Heuristic: if the chapter id is in the requested
+                        # URL but not in the final URL after the fetch,
+                        # the site kicked us out. We also check for a
+                        # redirect to a non-chapter path (e.g. the site
+                        # homepage, a login screen).
+                        chapter_id = ""
+                        if "chapter=" in url:
+                            chapter_id = url.split("chapter=", 1)[1].split("&", 1)[0]
+                        bounced = (
+                            snapshot.final_url is not None
+                            and (
+                                ("chapter=" in url and "chapter=" not in snapshot.final_url)
+                                or (
+                                    chapter_id
+                                    and chapter_id not in snapshot.final_url
+                                )
+                                or snapshot.final_url.rstrip("/").endswith(
+                                    ("/yupmanga.com", "yupmanga.com/")
+                                )
+                            )
+                        )
+                        if bounced:
+                            msg = (
+                                f"Session lost on page {page_index}: site "
+                                f"redirected to {snapshot.final_url}. "
+                                f"Re-authenticate and retry."
+                            )
+                            logger.warning(
+                                "scraper_session_lost",
+                                job_id=job_id,
+                                page=page_index,
+                                final_url=snapshot.final_url,
+                            )
+                            with SessionLocal() as db:
+                                job = db.get(ScrapeJob, job_id)
+                                if job:
+                                    job.status = ScrapeJobStatus.FAILED
+                                    job.error = msg
+                                    job.completed_at = datetime.now(timezone.utc)
+                                    db.commit()
+                            return
                         break
 
                     # Re-open a page for the next_url computation. We need a
@@ -589,11 +654,16 @@ class ScraperManager:
                         job.progress_pct = 85.0
                         db.commit()
                 out_paths: dict[str, str] = {}
+                # Use the discovered title (or user-supplied title) for the
+                # output filename. Previously this was hardcoded to "out"
+                # which made every scrape show up as "out - Desconocido"
+                # in the library — useless for browsing.
+                safe_title = _safe_filename(title or "Scraped Book")
                 for fmt in formats:
                     ext = {"PDF": "pdf", "EPUB": "epub", "CBZ": "cbz"}.get(fmt, fmt.lower())
-                    out = settings.scraper_output_dir / str(job_id) / f"out.{ext}"
+                    out = settings.scraper_output_dir / str(job_id) / f"{safe_title}.{ext}"
                     if fmt == "PDF":
-                        await build_pdf(images, out)
+                        await build_pdf(images, out, title=title)
                     elif fmt == "EPUB":
                         await build_epub(images, out, title=title)
                     elif fmt == "CBZ":
