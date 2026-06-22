@@ -31,6 +31,12 @@
   let pdfDoc: any = null;
   let currentPageNum = $state(1);
 
+  // CBZ state — array of object URLs (one per image page) and the
+  // current page number. Object URLs are revoked on destroy so the
+  // browser doesn't leak 100s of MB of decoded bitmaps.
+  let cbzPages: string[] = [];
+  let cbzScale = $state(1.0);
+
   let pdfScale = $state(1.5);
   let id = $derived(parseInt($page.params.id || '0'));
 
@@ -84,6 +90,8 @@
     const formats = book.formats.map((f) => f.fmt.toUpperCase());
     if (formats.includes('EPUB')) return { type: 'epub', url: `/api/reader/${id}/file/book.epub?fmt=EPUB` };
     if (formats.includes('PDF')) return { type: 'pdf', url: `/api/reader/${id}/file?fmt=PDF` };
+    if (formats.includes('CBZ')) return { type: 'cbz', url: `/api/reader/${id}/file?fmt=CBZ` };
+    if (formats.includes('CBR')) return { type: 'cbz', url: `/api/reader/${id}/file?fmt=CBR` };
     if (formats.includes('FB2')) return { type: 'fb2', url: `/api/reader/${id}/file/book.epub?fmt=FB2` };
     if (formats.includes('RTF')) return { type: 'rtf', url: `/api/reader/${id}/file/book.epub?fmt=RTF` };
     if (formats.includes('TXT')) return { type: 'txt', url: `/api/reader/${id}/file/book.epub?fmt=TXT` };
@@ -126,6 +134,12 @@
     if (pdfDoc) {
       try { pdfDoc.destroy(); } catch {}
     }
+    if (cbzPages.length) {
+      for (const u of cbzPages) {
+        try { URL.revokeObjectURL(u); } catch {}
+      }
+      cbzPages = [];
+    }
   });
 
   async function initReader() {
@@ -134,6 +148,8 @@
       await initEpubReader();
     } else if (bookFormat.type === 'pdf') {
       await initPdfReader();
+    } else if (bookFormat.type === 'cbz') {
+      await initCbzReader();
     } else if (['fb2', 'rtf', 'txt'].includes(bookFormat.type)) {
       initTextReader();
     }
@@ -340,6 +356,74 @@
     saveProgress(String(pageNum), pct, 'page');
   }
 
+  // CBZ is a ZIP of images. Fetch once, extract the image entries with
+  // JSZip, build object URLs (revoked on destroy), and render one at a
+  // time. Images are sorted by filename so a chapter's pages stay in
+  // order — readers expect page-001.jpg before page-215.jpg.
+  async function initCbzReader() {
+    const JSZip = (await import('jszip')).default;
+    const resp = await fetch(bookFormat!.url);
+    if (!resp.ok) throw new Error(`CBZ fetch failed: ${resp.status}`);
+    const buf = await resp.arrayBuffer();
+    const zip = await JSZip.loadAsync(buf);
+
+    // Pick image entries only — some CBZ files include ComicInfo.xml
+    // or other metadata sidecars we don't want to render.
+    const imageExts = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'avif']);
+    const entries = Object.values(zip.files).filter(
+      (f: any) => !f.dir && imageExts.has((f.name.split('.').pop() || '').toLowerCase())
+    );
+    entries.sort((a: any, b: any) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+    if (!entries.length) {
+      bookElement.innerHTML = '<p class="text-center opacity-70">CBZ sin imágenes legibles.</p>';
+      return;
+    }
+
+    // Object URLs decoded lazily — JSZip yields Blobs per entry.
+    // A 215-page CBZ holds ~5MB of compressed images; we keep them all
+    // in memory as object URLs (re-rendering on prev/next is instant).
+    // If memory ever becomes an issue, swap to LRU caching.
+    const urls: string[] = [];
+    for (const entry of entries as any[]) {
+      const blob = await entry.async('blob');
+      // Preserve mime type — JSZip's async('blob') defaults to
+      // application/octet-stream, which most browsers still render
+      // but a few (Safari on .webp) reject. Sniff from extension.
+      const ext = (entry.name.split('.').pop() || '').toLowerCase();
+      const mime = {
+        jpg: 'image/jpeg', jpeg: 'image/jpeg',
+        png: 'image/png', gif: 'image/gif',
+        webp: 'image/webp', bmp: 'image/bmp', avif: 'image/avif',
+      }[ext] || 'image/jpeg';
+      urls.push(URL.createObjectURL(new Blob([blob], { type: mime })));
+    }
+    cbzPages = urls;
+    totalPages = cbzPages.length;
+
+    // Pick initial page from saved progress (page numbers stored as
+    // 1-based strings, matching the PDF reader's scheme).
+    const startPage = progress?.position ? Math.max(1, parseInt(progress.position) || 1) : 1;
+    renderCbzPage(startPage);
+  }
+
+  function renderCbzPage(pageNum: number) {
+    if (!cbzPages.length || pageNum < 1 || pageNum > cbzPages.length) return;
+    currentPageNum = pageNum;
+    const url = cbzPages[pageNum - 1];
+    bookElement.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = `Página ${pageNum}`;
+    img.className = 'max-w-full shadow-soft rounded';
+    img.style.transform = `scale(${cbzScale})`;
+    img.style.transformOrigin = 'top center';
+    img.style.transition = 'transform 0.15s ease';
+    bookElement.appendChild(img);
+    const pct = (pageNum - 1) / cbzPages.length;
+    saveProgress(String(pageNum), pct, 'page');
+  }
+
   function initTextReader() {
     fetch(bookFormat!.url)
       .then((r) => r.text())
@@ -376,6 +460,8 @@
       rendition.next();
     } else if (bookFormat?.type === 'pdf' && pdfDoc) {
       renderPage(currentPageNum + 1);
+    } else if (bookFormat?.type === 'cbz' && cbzPages.length) {
+      renderCbzPage(currentPageNum + 1);
     }
   }
 
@@ -384,6 +470,8 @@
       rendition.prev();
     } else if (bookFormat?.type === 'pdf' && pdfDoc) {
       renderPage(currentPageNum - 1);
+    } else if (bookFormat?.type === 'cbz' && cbzPages.length) {
+      renderCbzPage(currentPageNum - 1);
     }
   }
 
@@ -394,6 +482,11 @@
     } else if (pdfDoc) {
       pdfScale = 1.0 + (fontSize - 12) * 0.075;
       renderPage(currentPageNum);
+    } else if (bookFormat?.type === 'cbz') {
+      // Reuse the same scale curve as PDF — the toolbar A+/A− buttons
+      // double as zoom controls for both formats.
+      cbzScale = 1.0 + (fontSize - 12) * 0.075;
+      renderCbzPage(currentPageNum);
     }
   }
 
@@ -417,9 +510,9 @@
 <div class="h-screen flex flex-col" data-theme={$readerTheme} style="background: var(--bg); color: var(--text);">
   <ReaderToolbar
     {book}
-    progressPct={bookFormat?.type === 'pdf' ? (currentPageNum - 1) / Math.max(1, totalPages) : currentPage / 100}
-    currentPage={bookFormat?.type === 'pdf' ? currentPageNum : currentPage}
-    totalPages={bookFormat?.type === 'pdf' ? totalPages : 100}
+    progressPct={(bookFormat?.type === 'pdf' || bookFormat?.type === 'cbz') ? (currentPageNum - 1) / Math.max(1, totalPages) : currentPage / 100}
+    currentPage={(bookFormat?.type === 'pdf' || bookFormat?.type === 'cbz') ? currentPageNum : currentPage}
+    totalPages={(bookFormat?.type === 'pdf' || bookFormat?.type === 'cbz') ? totalPages : 100}
     {fontSize}
     {fontFamily}
     {lineHeight}
@@ -443,8 +536,8 @@
     <div
       bind:this={bookElement}
       class="mx-auto p-6 w-full h-full"
-      class:max-w-3xl={bookFormat?.type !== 'pdf'}
-      class:max-w-none={bookFormat?.type === 'pdf'}
+      class:max-w-3xl={bookFormat?.type !== 'pdf' && bookFormat?.type !== 'cbz'}
+      class:max-w-none={bookFormat?.type === 'pdf' || bookFormat?.type === 'cbz'}
     ></div>
   </div>
 </div>
