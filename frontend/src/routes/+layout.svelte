@@ -9,15 +9,18 @@
   import Toaster from '$components/Toaster.svelte';
 
   import { initLanguage } from '$stores/i18n';
+  import { auth as authApi } from '$api/client';
 
   let { children } = $props();
 
   // Mobile drawer state — shared between Header (hamburger) and Sidebar (drawer).
   let mobileMenuOpen = $state(false);
 
+  // null = still probing, true = first-time setup (no users), false = users exist
+  let needsSetup = $state<boolean | null>(null);
+
   // Close the drawer whenever the route changes.
   $effect(() => {
-    // Touch $page.url.pathname so this re-runs on navigation
     void $page.url.pathname;
     untrack(() => {
       mobileMenuOpen = false;
@@ -28,14 +31,38 @@
     initTheme();
     initLanguage();
     await loadUser();
-    // Redirect to login if not authenticated and not already on login page
-    const isPublic = $page.url.pathname.startsWith('/login');
-    if (!$user && !isPublic) {
-      goto('/login?next=' + encodeURIComponent($page.url.pathname + $page.url.search));
+
+    // Probe first-time setup status once per load.
+    try {
+      const status = await authApi.setupStatus();
+      needsSetup = status.needs_setup;
+    } catch {
+      // If the probe fails, don't block — just behave as if setup is done.
+      needsSetup = false;
     }
-    // Defensive: if already logged in but on /login, send home
-    if ($user && isPublic) {
+
+    const path = $page.url.pathname;
+    const isLogin = path.startsWith('/login');
+    const isRegister = path.startsWith('/register');
+
+    // If logged in, send to home from any auth page.
+    if ($user && (isLogin || isRegister)) {
       goto('/');
+      return;
+    }
+
+    // If NOT logged in:
+    if (!$user) {
+      if (needsSetup && !isRegister) {
+        // First-time setup → /register
+        goto('/register');
+      } else if (!needsSetup && isRegister) {
+        // Users exist → don't show register, go to login
+        goto('/login');
+      } else if (!needsSetup && !isLogin && !isRegister) {
+        // Any other authed-only page → /login
+        goto('/login?next=' + encodeURIComponent(path + $page.url.search));
+      }
     }
   });
 </script>

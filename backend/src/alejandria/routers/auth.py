@@ -26,6 +26,7 @@ from alejandria.models.user import User, UserRole
 from alejandria.schemas.auth import (
     LoginRequest,
     RegisterRequest,
+    SetupStatus,
     TokenResponse,
     UserCreate,
     UserRead,
@@ -141,16 +142,33 @@ async def update_me(
     return user
 
 
-@router.post("/register", response_model=UserRead, status_code=201)
+@router.get("/setup-status", response_model=SetupStatus)
+async def setup_status(db: Annotated[Session, Depends(get_db)]) -> SetupStatus:
+    """First-time setup probe — drives login vs register screen on the SPA."""
+    count = db.scalar(select(User.id).limit(1))
+    user_count = 1 if count is not None else 0
+    return SetupStatus(
+        needs_setup=user_count == 0,
+        user_count=user_count,
+        allow_registration=user_count == 0,  # public registration only while empty
+    )
+
+
+@router.post("/register", response_model=TokenResponse, status_code=201)
 async def register(
     payload: RegisterRequest,
+    response: Response,
     db: Annotated[Session, Depends(get_db)],
-) -> User:
-    """Public registration (only if no users exist, or if explicitly enabled)."""
-    settings = get_settings()
-    user_count = db.execute(select(User).limit(1)).scalar_one_or_none()
-    if user_count is not None and not settings.dev_mode:
-        # Disable public registration once at least one user exists
+) -> TokenResponse:
+    """Public registration.
+
+    - If no users exist yet, this is the first-time setup: the new user is
+      created as ADMIN and is auto-logged-in.
+    - If users already exist, registration is locked (admins create accounts
+      from the user management UI).
+    """
+    existing = db.scalar(select(User.id).limit(1))
+    if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Public registration is disabled. Contact the admin.",
@@ -160,13 +178,20 @@ async def register(
         username=payload.username,
         email=payload.email,
         password_hash=hash_password(payload.password),
-        role=UserRole.USER,
+        display_name=payload.display_name or payload.username,
+        role=UserRole.ADMIN,  # first user is always admin
         is_active=True,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
-    return user
+
+    # Seed the default shelves (Currently Reading, Finished, Wishlist, Favorites)
+    # so the new admin has the same baseline as the env-var-driven bootstrap.
+    from alejandria.utils.bootstrap import _create_default_shelves
+    _create_default_shelves(db, user.id)
+
+    return _issue_token(response, db, user)
 
 
 # OIDC endpoints ---------------------------------------------------------------

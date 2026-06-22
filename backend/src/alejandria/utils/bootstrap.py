@@ -29,12 +29,22 @@ def ensure_library_dirs() -> None:
 
 
 async def ensure_admin_user() -> None:
-    """Create the default admin user if no users exist."""
+    """Create the default admin user from env vars if no users exist AND a
+    password is configured.
+
+    If no users exist and the admin password is empty, the SPA's /register
+    page is responsible for creating the first user (always as ADMIN). This
+    is the first-time-setup flow shown to fresh installs.
+    """
     settings = get_settings()
     with SessionLocal() as db:
         result = db.execute(select(User).limit(1)).scalar_one_or_none()
         if result is not None:
             return  # At least one user exists
+
+        if not settings.admin_password:
+            logger.info("first_time_setup_pending_register_via_ui")
+            return
 
         logger.info("creating_default_admin", username=settings.admin_username)
         admin = User(
@@ -50,27 +60,30 @@ async def ensure_admin_user() -> None:
         db.add(admin)
         db.commit()
         db.refresh(admin)
-
-        # Create default shelves for admin (icons are SVG filenames in /static/icons)
-        for name, shelf_type, icon, color in [
-            ("Currently Reading", ShelfType.READING, "reading", "#3B82F6"),
-            ("Finished", ShelfType.FINISHED, "finished", "#10B981"),
-            ("Wishlist", ShelfType.WISHLIST, "wishlist", "#F59E0B"),
-            ("Favorites", ShelfType.FAVORITES, "favorite", "#EF4444"),
-        ]:
-            slug = name.lower().replace(" ", "-")
-            shelf = Shelf(
-                user_id=admin.id,
-                name=name,
-                slug=slug,
-                shelf_type=shelf_type,
-                icon=icon,
-                color=color,
-                is_public=False,
-            )
-            db.add(shelf)
-        db.commit()
+        _create_default_shelves(db, admin.id)
         logger.info("default_shelves_created")
+
+
+def _create_default_shelves(db, user_id: int) -> None:
+    """Create the four default shelves for a user (icons are SVG filenames in /static/icons)."""
+    for name, shelf_type, icon, color in [
+        ("Currently Reading", ShelfType.READING, "reading", "#3B82F6"),
+        ("Finished", ShelfType.FINISHED, "finished", "#10B981"),
+        ("Wishlist", ShelfType.WISHLIST, "wishlist", "#F59E0B"),
+        ("Favorites", ShelfType.FAVORITES, "favorite", "#EF4444"),
+    ]:
+        slug = name.lower().replace(" ", "-")
+        shelf = Shelf(
+            user_id=user_id,
+            name=name,
+            slug=slug,
+            shelf_type=shelf_type,
+            icon=icon,
+            color=color,
+            is_public=False,
+        )
+        db.add(shelf)
+    db.commit()
 
 
 def cleanup_orphaned_caches() -> int:

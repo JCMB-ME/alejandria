@@ -95,12 +95,21 @@ const api = {
 };
 
 // --- Auth ---
+export interface SetupStatus {
+  needs_setup: boolean;
+  user_count: number;
+  allow_registration: boolean;
+}
+
 export const auth = {
   login: (username: string, password: string) =>
     api.post<Types.TokenResponse>('/api/auth/login/json', { username, password }),
   logout: () => api.post<{ status: string }>('/api/auth/logout'),
   me: () => api.get<Types.User>('/api/auth/me'),
   updateMe: (data: Partial<Types.User>) => api.patch<Types.User>('/api/auth/me', data),
+  setupStatus: () => api.get<SetupStatus>('/api/auth/setup-status'),
+  register: (data: { username: string; email: string; password: string; display_name?: string }) =>
+    api.post<Types.TokenResponse>('/api/auth/register', data),
   appInfo: () => api.get<{ version: string; oidc_enabled: boolean; smtp_configured: boolean }>(
     '/api/settings/app'
   ),

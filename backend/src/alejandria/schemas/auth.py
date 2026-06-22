@@ -72,6 +72,15 @@ class RegisterRequest(BaseModel):
     username: str = Field(min_length=3, max_length=64)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+    display_name: str | None = Field(default=None, max_length=128)
+
+
+class SetupStatus(BaseModel):
+    """First-time setup status — drives the SPA's login vs register screen."""
+
+    needs_setup: bool
+    user_count: int
+    allow_registration: bool = False
 
 
 class TokenResponse(BaseModel):
