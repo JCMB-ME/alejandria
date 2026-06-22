@@ -32,7 +32,7 @@
   }
 </script>
 
-<header class="h-16 border-b flex items-center px-3 md:px-6 gap-2 md:gap-3 shrink-0" style="background: var(--surface); border-color: var(--border);">
+<header class="h-16 border-b flex items-center px-3 md:px-6 gap-2 md:gap-3 shrink-0 relative z-30" style="background: var(--surface); border-color: var(--border);">
   <!-- Hamburger (mobile only) -->
   <button
     class="btn btn-ghost !p-2 md:hidden shrink-0"
@@ -61,11 +61,11 @@
       {#if showThemeMenu}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="fixed inset-0 z-40 cursor-default" onclick={() => showThemeMenu = false}></div>
+        <div class="fixed inset-0 z-[60] cursor-default" onclick={() => showThemeMenu = false}></div>
       {/if}
 
       <button
-        class="btn btn-ghost !p-2 z-50 relative"
+        class="btn btn-ghost !p-2 z-[60] relative"
         onclick={() => showThemeMenu = !showThemeMenu}
         aria-label="Toggle theme"
         title={$t('theme')}
@@ -80,7 +80,7 @@
       </button>
 
       {#if showThemeMenu}
-        <div class="absolute right-0 top-full mt-1.5 w-48 rounded-md shadow-lg py-1 border z-50 bg-[var(--surface)] border-[var(--border)] overflow-hidden">
+        <div class="absolute right-0 top-full mt-1.5 w-48 rounded-md shadow-lg py-1 border z-[60] bg-[var(--surface)] border-[var(--border)] overflow-hidden">
           {#each ['light', 'sepia', 'dark'] as tVal}
             <button
               class="w-full text-left px-4 py-2.5 text-sm flex items-center justify-between hover:bg-[var(--elevated)] transition-colors text-[var(--text)]"
