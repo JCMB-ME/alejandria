@@ -4,7 +4,7 @@
   import { setUser } from '$stores/auth';
   import Logo from '$components/Logo.svelte';
   import toast from '$components/Toaster.svelte';
-  import { t } from '$stores/i18n';
+  import { language, setLanguage, t } from '$stores/i18n';
 
   let username = $state('');
   let displayName = $state('');
@@ -55,6 +55,26 @@
 </svelte:head>
 
 <div class="w-full max-w-md">
+  <div class="flex justify-end mb-3">
+    <div class="inline-flex rounded border border-[var(--border)] bg-[var(--elevated)] p-0.5 text-xs font-medium">
+      <button
+        type="button"
+        class="px-2.5 py-1 rounded transition-colors {$language === 'en' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-soft)] hover:text-[var(--text)]'}"
+        onclick={() => setLanguage('en')}
+        aria-pressed={$language === 'en'}
+      >
+        EN
+      </button>
+      <button
+        type="button"
+        class="px-2.5 py-1 rounded transition-colors {$language === 'es' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-soft)] hover:text-[var(--text)]'}"
+        onclick={() => setLanguage('es')}
+        aria-pressed={$language === 'es'}
+      >
+        ES
+      </button>
+    </div>
+  </div>
   <div class="flex justify-center mb-6">
     <Logo size={64} />
   </div>
