@@ -112,21 +112,25 @@
 </script>
 
 <section class="p-4 md:p-6 mb-6 md:mb-8 bg-[var(--surface)] border border-[var(--border)] rounded-lg">
-  <h3 class="text-base md:text-lg font-semibold mb-2">{$t('scraper_title')}</h3>
-  <p class="text-sm text-[var(--text-soft)] max-w-xl mb-2">
-    {$t('scraper_desc')}
-  </p>
-  <p class="text-xs text-[var(--text-muted)] mb-4 flex items-center gap-1.5">
+  <div class="flex items-center gap-2.5 mb-2">
     <!--
-      Open-book icon. Matches the visual language of the search icon
-      used in the Anna's Archive header (above). Placed inline with
-      the copyright notice so the relationship "scraper → source" is
-      obvious at a glance.
+      Open-book icon next to the panel title. Mirrors the Anna's Archive
+      header (search icon + "Anna's Archive" on `+page.svelte`): the icon
+      sits at the same vertical center as the heading, using the same
+      `items-center gap-2.5` wrapper. The "scraper_title" key resolves to
+      the literal "YUPMANGA" word in both ES and EN, so this icon lands
+      right before that word.
     -->
-    <svg class="w-3.5 h-3.5 inline-block shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <svg class="w-5 h-5 text-[var(--text)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
       <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
     </svg>
+    <h3 class="text-base md:text-lg font-semibold text-[var(--text)]">{$t('scraper_title')}</h3>
+  </div>
+  <p class="text-sm text-[var(--text-soft)] max-w-xl mb-2">
+    {$t('scraper_desc')}
+  </p>
+  <p class="text-xs text-[var(--text-muted)] mb-4">
     <span>{$t('scraper_copyright_notice')}</span>
     <a
       href="https://www.yupmanga.com/"
