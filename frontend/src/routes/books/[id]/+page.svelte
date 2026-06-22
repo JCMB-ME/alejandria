@@ -304,9 +304,29 @@
                   onclick={() => toggleShelf(s)}
                 >
                   {#if s.icon}
-                    <img src="/icons/{s.icon}.svg" alt="" class="w-4 h-4" style:filter={isInShelf ? 'brightness(10)' : ''} />
+                    <!--
+                      Render the SVG via mask-image + background-color so the
+                      icon picks up currentColor from the button context.
+                      A plain <img src=...> ignores currentColor (SVGs loaded
+                      as external resources have no color inheritance), and
+                      the previous inline `filter: brightness(10)` overwrite
+                      caused the icon to go pure white in dark mode where
+                      var(--accent) is also light, making it invisible. The
+                      mask keeps the icon legible in all three themes
+                      (light/dark/sepia) because it follows the button's
+                      own color rule.
+                    -->
+                    <span
+                      class="w-4 h-4 shrink-0 inline-block"
+                      style="-webkit-mask: url(/icons/{s.icon}.svg) no-repeat center / contain; mask: url(/icons/{s.icon}.svg) no-repeat center / contain; background-color: currentColor;"
+                      aria-hidden="true"
+                    ></span>
                   {:else}
-                    <img src="/icons/book.svg" alt="" class="w-4 h-4 opacity-60" />
+                    <span
+                      class="w-4 h-4 shrink-0 inline-block opacity-60"
+                      style="-webkit-mask: url(/icons/book.svg) no-repeat center / contain; mask: url(/icons/book.svg) no-repeat center / contain; background-color: currentColor;"
+                      aria-hidden="true"
+                    ></span>
                   {/if}
                   {translateShelfName(s.name, $language)}
                 </button>
