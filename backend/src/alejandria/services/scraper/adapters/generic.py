@@ -67,6 +67,60 @@ class GenericAdapter:
             except Exception:  # noqa: BLE001
                 pass
 
+    async def discover_title(
+        self, browser: Any, url: str
+    ) -> str | None:
+        """Best-effort chapter title extraction.
+
+        Manga sites usually put "Manga Name - Chapter 215 :: Site Name"
+        in <title> and a cleaner label in the first <h1>. We try <h1>
+        first (shorter, less noisy) and fall back to <title> with
+        common ":: Site" / "- Site Name" suffixes stripped.
+        """
+        page = await browser.new_page()
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=5_000)
+            except Exception:  # noqa: BLE001
+                pass
+            title = await page.evaluate(
+                """
+                () => {
+                  const h1 = document.querySelector('h1');
+                  if (h1 && h1.textContent && h1.textContent.trim()) {
+                    return h1.textContent.trim();
+                  }
+                  const og = document.querySelector('meta[property="og:title"]');
+                  if (og && og.content && og.content.trim()) {
+                    return og.content.trim();
+                  }
+                  const t = document.querySelector('title');
+                  if (t && t.textContent && t.textContent.trim()) {
+                    // Strip common " :: Site", " - Site", " | Site" suffixes
+                    return t.textContent
+                      .trim()
+                      .split(/\\s*(?:::|\\||\\—|\\–|-)\\s+[A-Za-z][^|::\\-]+$/)[0]
+                      .trim();
+                  }
+                  return null;
+                }
+                """
+            )
+            if not title:
+                return None
+            # Cap absurd lengths (some sites put the entire chapter in <title>).
+            if len(title) > 200:
+                title = title[:200].rstrip() + "…"
+            return title
+        except Exception:  # noqa: BLE001
+            return None
+        finally:
+            try:
+                await page.close()
+            except Exception:  # noqa: BLE001
+                pass
+
     async def next_url(
         self, page: Any, current_url: str, page_index: int
     ) -> str | None:

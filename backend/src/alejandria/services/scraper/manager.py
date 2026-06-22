@@ -350,6 +350,34 @@ class ScraperManager:
                             adapter = a
                             break
 
+                # If the user didn't supply a title, try to discover one
+                # from the chapter page itself. This runs once before the
+                # main loop so the discovered title flows into the
+                # packagers (EPUB metadata, PDF title, CBZ cover) without
+                # a second page load.
+                if not job.title or job.title.strip() in ("", "Scraped Book"):
+                    try:
+                        discovered = await adapter.discover_title(
+                            self._browser, url
+                        )
+                        if discovered:
+                            title = discovered
+                            # Persist so /api/scraper/jobs shows it
+                            with SessionLocal() as db:
+                                j = db.get(ScrapeJob, job_id)
+                                if j:
+                                    j.title = title
+                                    db.commit()
+                            logger.info(
+                                "scraper_title_discovered",
+                                job_id=job_id,
+                                title=title,
+                            )
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning(
+                            "scraper_title_discovery_failed", error=str(e)
+                        )
+
                 images: list[FetchedImage] = []
                 page_index = 1
                 current_url: str | None = url
@@ -360,10 +388,12 @@ class ScraperManager:
                 # Track visited page URLs so a chapter-rolling-over "next"
                 # link doesn't loop us into the next chapter's first page.
                 visited_urls: set[str] = set()
-                # Track image src URLs seen so far. If the same src appears
-                # twice, the site has rolled us back to a page we already
-                # collected (typical: the first page of the next chapter,
-                # or a "no more pages" landing screen).
+                # Track image src URLs seen so far. Used to detect
+                # "no new page content" — if every image on the current
+                # page is already in this set, the chapter has rolled
+                # over into a duplicate screen. Individual repeat images
+                # (logos, footers shared across pages) are filtered but
+                # don't stop the scrape.
                 seen_image_srcs: set[str] = set()
                 # Set by the inner loop when a repeat image is detected;
                 # prevents adapter.next_url from overwriting the stop signal.
@@ -412,21 +442,53 @@ class ScraperManager:
                             pass
 
                         # Filter out image srcs we've already collected.
-                        # Same dedup as before but batched up front so we
-                        # can fan out the actual fetches in parallel.
+                        # Batched up front so we can fan out the actual
+                        # fetches in parallel.
+                        #
+                        # IMPORTANT: only stop the WHOLE scrape if this page
+                        # has zero new images. The previous logic stopped
+                        # on the first repeat, which is wrong for sites that
+                        # share decorative chrome (logos, headers, footer
+                        # banners) across every page — page 2's chrome image
+                        # would be flagged as a repeat and we'd stop at page
+                        # 29 instead of 215. The signal we actually want is
+                        # "no new page content here", which means either an
+                        # empty snapshot (already handled above) or every
+                        # image on this page was seen before — i.e. the
+                        # chapter rolled over into a duplicate screen.
                         new_image_urls: list[str] = []
+                        repeats_on_page = 0
                         for img_url in snapshot.image_urls:
                             if img_url in seen_image_srcs:
-                                logger.info(
-                                    "scraper_repeat_image_detected",
-                                    job_id=job_id,
-                                    page=page_index,
-                                    img_url=img_url[:200],
-                                )
-                                stop_after_page = True
-                                break
+                                repeats_on_page += 1
+                                continue
                             seen_image_srcs.add(img_url)
                             new_image_urls.append(img_url)
+
+                        if (
+                            repeats_on_page
+                            and not new_image_urls
+                        ):
+                            # Every image on this page is one we've already
+                            # collected. The chapter has likely rolled over
+                            # into a cover/landing screen.
+                            logger.info(
+                                "scraper_duplicate_page_detected",
+                                job_id=job_id,
+                                page=page_index,
+                                repeats=repeats_on_page,
+                            )
+                            stop_after_page = True
+                        elif repeats_on_page:
+                            # Partial repeat — usually decorative chrome.
+                            # Log it for telemetry but keep going.
+                            logger.info(
+                                "scraper_partial_repeat_skipped",
+                                job_id=job_id,
+                                page=page_index,
+                                repeats=repeats_on_page,
+                                fresh=len(new_image_urls),
+                            )
 
                         if not new_image_urls:
                             # Nothing to fetch — either already seen or empty page.

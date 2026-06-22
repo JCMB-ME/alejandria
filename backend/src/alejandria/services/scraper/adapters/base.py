@@ -36,3 +36,14 @@ class SiteAdapter(Protocol):
     async def next_url(
         self, page: object, current_url: str, page_index: int
     ) -> str | None: ...
+
+    async def discover_title(
+        self, browser: object, url: str
+    ) -> str | None:
+        """Best-effort title extraction from the chapter landing page.
+
+        Returns the page's own title (e.g. "Manga X - Chapter 215") when
+        the site exposes one, else None. The manager falls back to the
+        user-supplied job title or "Scraped Book" if this returns None.
+        """
+        return None
