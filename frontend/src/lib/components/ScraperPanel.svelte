@@ -105,6 +105,12 @@
   </p>
   <p class="text-xs text-[var(--text-muted)] mb-4">
     {$t('scraper_copyright_notice')}
+    <a
+      href="https://www.yupmanga.com/"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="text-[var(--accent)] hover:underline ml-1"
+    >yupmanga.com</a>
   </p>
 
   <form onsubmit={startJob} class="flex flex-col gap-3">
