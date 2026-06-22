@@ -30,25 +30,46 @@ class ScrapeJobCreate(BaseModel):
 
 
 class ScrapeJobRead(BaseModel):
-    """API representation of a ScrapeJob row."""
+    """API representation of a ScrapeJob row.
 
-    model_config = ConfigDict(from_attributes=True)
+    The SQLAlchemy model stores JSON-encoded lists/dicts in `*_json` columns.
+    We expose them under clean names (`formats`, `output_paths`, etc.) by
+    aliasing those columns in ConfigDict and decoding the JSON strings in
+    field validators.
+    """
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+    )
 
     id: int
     user_id: int
     url: str
     title: str | None
     adapter_name: str
-    formats: list[ScrapeFormat] = []
-    destinations: list[ScrapeDestination] = []
+    formats: list[ScrapeFormat] = Field(
+        default_factory=list,
+        validation_alias="formats_json",
+    )
+    destinations: list[ScrapeDestination] = Field(
+        default_factory=list,
+        validation_alias="destinations_json",
+    )
     status: ScrapeJobStatus
     total_pages: int
     current_page: int
     progress_pct: float
     total_bytes: int
     error: str | None
-    output_paths: dict[str, str] | None = None
-    imported_book_ids: dict[str, int] | None = None
+    output_paths: dict[str, str] | None = Field(
+        default=None,
+        validation_alias="output_paths_json",
+    )
+    imported_book_ids: dict[str, int] | None = Field(
+        default=None,
+        validation_alias="imported_book_ids_json",
+    )
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
