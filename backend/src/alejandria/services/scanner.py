@@ -118,11 +118,21 @@ class LibraryScanner:
         return result
 
     async def add_book(self, file_path: Path) -> dict[str, Any]:
-        """Add a single book to the library."""
+        """Add a single book to the library.
+
+        Uses ``--automerge overwrite`` so that re-importing the same URL
+        (a common case for the scraper, which may produce duplicate runs)
+        updates the format on the existing record instead of failing with
+        "ya existen en la base de datos". In that case ``calibredb add``
+        prints the resolved book id on stdout ("ID de libros añadidos: N"),
+        but the actual book we matched is the existing one — its id appears
+        in the stderr preamble of the same line.
+        """
         settings = get_settings()
         calibre_bin = settings.calibre_bin_path
         cmd = [
             calibre_bin.replace("calibredb", "calibredb"), "add",
+            "--automerge", "overwrite",
             "--library-path", str(self._library_root),
             str(file_path),
         ]

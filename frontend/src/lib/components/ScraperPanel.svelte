@@ -4,7 +4,6 @@
   import type {
     ScrapeJob,
     ScrapeFormat,
-    ScrapeDestination,
     AdapterTestResult,
   } from '$api/types';
   import { t } from '$stores/i18n';
@@ -13,7 +12,6 @@
   // Form state
   let url = $state('');
   let formats = $state<ScrapeFormat[]>(['PDF']);
-  let destinations = $state<ScrapeDestination[]>(['download']);
   let submitting = $state(false);
   let testing = $state(false);
 
@@ -31,25 +29,9 @@
     }
   }
 
-  function toggleFormat(f: ScrapeFormat) {
-    if (formats.includes(f)) {
-      formats = formats.filter((x) => x !== f);
-    } else {
-      formats = [...formats, f];
-    }
-  }
-
-  function toggleDestination(d: ScrapeDestination) {
-    if (destinations.includes(d)) {
-      destinations = destinations.filter((x) => x !== d);
-    } else {
-      destinations = [...destinations, d];
-    }
-  }
-
   async function startJob(e: SubmitEvent) {
     e.preventDefault();
-    if (!url.trim() || formats.length === 0 || destinations.length === 0) {
+    if (!url.trim() || formats.length === 0) {
       toast.error($t('scraper_create_failed', { detail: 'missing fields' }));
       return;
     }
@@ -58,7 +40,7 @@
       const job = await scraper.create({
         url: url.trim(),
         formats,
-        destinations,
+        destinations: ['library'],
       });
       toast.success($t('scraper_create_success'));
       url = '';
@@ -150,29 +132,10 @@
           </label>
         {/each}
       </fieldset>
-
-      <fieldset class="flex flex-col gap-1">
-        <legend class="text-xs font-semibold uppercase tracking-wider text-[var(--text-soft)]">
-          {$t('scraper_destinations_label')}
-        </legend>
-        <label class="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            value="library"
-            bind:group={destinations}
-          />
-          {$t('scraper_dest_library')}
-        </label>
-        <label class="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            value="download"
-            bind:group={destinations}
-          />
-          {$t('scraper_dest_download')}
-        </label>
-      </fieldset>
     </div>
+    <p class="text-xs text-[var(--text-muted)] -mt-1">
+      {$t('scraper_auto_import_note')}
+    </p>
 
     <div class="flex gap-2">
       <button type="submit" class="btn btn-primary" disabled={submitting}>
@@ -214,24 +177,7 @@
                 {/if}
               </div>
               <div class="flex flex-col gap-1 shrink-0">
-                {#if j.status === 'done'}
-                  {#each Object.keys(j.output_paths || {}) as fmt}
-                    <a
-                      href={scraper.downloadUrl(j.id, fmt as ScrapeFormat)}
-                      class="btn btn-secondary text-xs py-1 px-2"
-                    >
-                      {$t('scraper_download_btn', { fmt })}
-                    </a>
-                    {#if j.imported_book_ids && j.imported_book_ids[fmt]}
-                      <a
-                        href="/books/{j.imported_book_ids[fmt]}"
-                        class="btn btn-secondary text-xs py-1 px-2"
-                      >
-                        {$t('scraper_view_book')}
-                      </a>
-                    {/if}
-                  {/each}
-                {:else if j.status === 'queued' || j.status === 'scraping' || j.status === 'packaging'}
+                {#if j.status === 'queued' || j.status === 'scraping' || j.status === 'packaging'}
                   <button
                     class="btn btn-secondary text-xs py-1 px-2"
                     onclick={() => cancelJob(j.id)}

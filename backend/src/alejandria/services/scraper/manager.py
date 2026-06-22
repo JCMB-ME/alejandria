@@ -48,20 +48,26 @@ _WORKER_CANCEL_CHECK_EVERY_PAGES = 1
 
 
 def _re_find_calibre_id(stdout: str) -> int | None:
-    """Parse `calibredb add` stdout for the assigned book id."""
-    m = re.search(r"\badded book id(?:=|:)\s*(\d+)", stdout)
-    if m:
-        try:
-            return int(m.group(1))
-        except ValueError:
-            return None
-    # Alternative: calibredb may print "Added book id: 12" or similar.
-    m = re.search(r"\bbook\s*id[:\s=]+(\d+)", stdout, re.IGNORECASE)
-    if m:
-        try:
-            return int(m.group(1))
-        except ValueError:
-            return None
+    """Parse `calibredb add` stdout for the assigned book id.
+
+    Calibre's CLI output is localized: English builds print
+    "Added book ids: 1", Spanish builds print "ID de libros añadidos: 1".
+    Accept any of the known phrasings by looking for a digit after a label
+    that mentions book id(s), in any language.
+    """
+    patterns = (
+        r"\badded book ids?[:\s=]+(\d+)",
+        r"\bbook\s*ids?[:\s=]+(\d+)",
+        r"id\s*de\s*libros?\s*añadidos?[:\s=]+(\d+)",
+        r"id\s+de\s+libro\s+añadido[:\s=]+(\d+)",
+    )
+    for pat in patterns:
+        m = re.search(pat, stdout, re.IGNORECASE)
+        if m:
+            try:
+                return int(m.group(1))
+            except ValueError:
+                return None
     return None
 
 
@@ -191,9 +197,25 @@ class ScraperManager:
         return job
 
     async def list_jobs(self, db: Session, user_id: int) -> list[ScrapeJob]:
+        """Return only *active* jobs for the user.
+
+        The frontend panel is an in-flight monitor, not a history. A job that
+        has reached a terminal state (DONE / FAILED / CANCELLED) is no longer
+        the user's concern: the result already landed in the library, or the
+        error was surfaced. Once the user navigates away or reloads, finished
+        rows drop out of the panel automatically.
+        """
+        active_states = (
+            ScrapeJobStatus.QUEUED,
+            ScrapeJobStatus.SCRAPING,
+            ScrapeJobStatus.PACKAGING,
+        )
         stmt = (
             select(ScrapeJob)
-            .where(ScrapeJob.user_id == user_id)
+            .where(
+                ScrapeJob.user_id == user_id,
+                ScrapeJob.status.in_(active_states),
+            )
             .order_by(ScrapeJob.created_at.desc())
         )
         return list(db.execute(stmt).scalars())
@@ -450,28 +472,30 @@ class ScraperManager:
                         await build_cbz(images, out)
                     out_paths[fmt] = str(out)
 
-                # Library import
+                # Library import — every successful scrape is auto-imported.
+                # `download` is a no-op (the file is already on disk and the
+                # browser fetch is one-shot); library is the only meaningful
+                # destination and is always on.
                 imported: dict[str, int] = {}
-                if "library" in destinations:
-                    from alejandria.services.scanner import get_scanner
+                from alejandria.services.scanner import get_scanner
 
-                    scanner = get_scanner()
-                    for fmt, p in out_paths.items():
-                        try:
-                            result = await scanner.add_book(Path(p))
-                            bid = _re_find_calibre_id(result.get("stdout", ""))
-                            if bid is not None:
-                                imported[fmt] = bid
-                            else:
-                                # No id parsed, but the command may still have
-                                # succeeded — log the stderr for diagnosis.
-                                logger.warning(
-                                    "scraper_import_no_id",
-                                    fmt=fmt,
-                                    stderr=result.get("stderr", "")[:500],
-                                )
-                        except Exception as e:  # noqa: BLE001
-                            logger.error("scraper_import_failed", fmt=fmt, error=str(e))
+                scanner = get_scanner()
+                for fmt, p in out_paths.items():
+                    try:
+                        result = await scanner.add_book(Path(p))
+                        bid = _re_find_calibre_id(result.get("stdout", ""))
+                        if bid is not None:
+                            imported[fmt] = bid
+                        else:
+                            # No id parsed, but the command may still have
+                            # succeeded — log the stderr for diagnosis.
+                            logger.warning(
+                                "scraper_import_no_id",
+                                fmt=fmt,
+                                stderr=result.get("stderr", "")[:500],
+                            )
+                    except Exception as e:  # noqa: BLE001
+                        logger.error("scraper_import_failed", fmt=fmt, error=str(e))
 
                 # Done
                 with SessionLocal() as db:

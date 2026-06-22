@@ -113,15 +113,30 @@ class Settings(BaseSettings):
         """Resolve calibre binary path."""
         if self.calibre_bin:
             return self.calibre_bin
-        # Common locations
-        for path in ("/opt/calibre/calibredb", "/opt/calibre/ebook-convert",
-                     "/usr/bin/calibredb", "/usr/bin/ebook-convert",
-                     "calibredb", "ebook-convert"):
+        # Common locations — Linux, macOS (Docker), and Windows native.
+        candidates = (
+            "/opt/calibre/calibredb",
+            "/opt/calibre/ebook-convert",
+            "/usr/bin/calibredb",
+            "/usr/bin/ebook-convert",
+            "C:/Program Files/Calibre2/calibredb.exe",
+            "C:/Program Files/Calibre2/ebook-convert.exe",
+            "C:/Program Files/calibre/calibredb.exe",
+            "C:/Program Files/calibre/ebook-convert.exe",
+            "calibredb",
+            "ebook-convert",
+        )
+        import shutil
+
+        for path in candidates:
             try:
-                import shutil
-                resolved = shutil.which(path) or path
-                if Path(resolved).exists() if Path(resolved).is_absolute() else True:
-                    return path
+                if Path(path).is_absolute():
+                    if Path(path).exists():
+                        return path
+                else:
+                    resolved = shutil.which(path)
+                    if resolved:
+                        return resolved
             except Exception:
                 continue
         return "calibredb"
