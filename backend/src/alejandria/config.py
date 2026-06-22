@@ -76,8 +76,9 @@ class Settings(BaseSettings):
     scraper_enabled: bool = True
     scraper_output_dir: Path = Path("/config/scrapes")
     scraper_max_concurrent_jobs: int = 2
+    scraper_image_concurrency: int = 4
     scraper_max_pages_per_job: int = 2000
-    scraper_default_delay_ms: int = 500
+    scraper_default_delay_ms: int = 100
     scraper_max_total_size_mb: int = 500
     scraper_browser_headless: bool = True
     scraper_adapters_file: Path = Path("/config/site-adapters.yaml")

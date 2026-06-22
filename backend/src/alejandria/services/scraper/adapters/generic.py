@@ -33,7 +33,10 @@ class GenericAdapter:
         try:
             await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
             try:
-                await page.wait_for_load_state("networkidle", timeout=15_000)
+                # Networkidle can hang for 15s on a manga page with
+                # dozens of in-flight image requests. domcontentloaded
+                # is plenty — images stream in after.
+                await page.wait_for_load_state("domcontentloaded", timeout=5_000)
             except Exception:  # noqa: BLE001
                 pass
             candidates = await page.evaluate(

@@ -407,25 +407,15 @@ class ScraperManager:
                     try:
                         await page.goto(current_url, wait_until="domcontentloaded", timeout=30_000)
                         try:
-                            await page.wait_for_load_state("networkidle", timeout=10_000)
+                            await page.wait_for_load_state("domcontentloaded", timeout=5_000)
                         except Exception:  # noqa: BLE001
                             pass
 
+                        # Filter out image srcs we've already collected.
+                        # Same dedup as before but batched up front so we
+                        # can fan out the actual fetches in parallel.
+                        new_image_urls: list[str] = []
                         for img_url in snapshot.image_urls:
-                            if page_index > max_pages:
-                                break
-                            if total_bytes >= max_bytes:
-                                with SessionLocal() as db:
-                                    job = db.get(ScrapeJob, job_id)
-                                    if job:
-                                        job.status = ScrapeJobStatus.FAILED
-                                        job.error = "Job exceeded max total size"
-                                        job.completed_at = datetime.now(timezone.utc)
-                                        db.commit()
-                                return
-                            # Reject any image src we've already collected.
-                            # The next-chapter "first page" trick is the
-                            # usual reason this fires.
                             if img_url in seen_image_srcs:
                                 logger.info(
                                     "scraper_repeat_image_detected",
@@ -436,36 +426,71 @@ class ScraperManager:
                                 stop_after_page = True
                                 break
                             seen_image_srcs.add(img_url)
-                            try:
-                                fetched = await fetch_image(
-                                    self._http_session, img_url
-                                )
-                            except ValueError as e:
-                                logger.warning(
-                                    "scraper_image_skipped", url=img_url, error=str(e)
-                                )
-                                continue
-                            except Exception as e:  # noqa: BLE001
-                                logger.warning(
-                                    "scraper_image_error", url=img_url, error=str(e)
-                                )
-                                continue
+                            new_image_urls.append(img_url)
 
-                            page_filename = pages_dir / f"page-{page_index:04d}.{fetched.filename_hint.rsplit('.', 1)[-1] or 'jpg'}"
-                            page_filename.write_bytes(fetched.bytes)
-                            fetched.filename_hint = page_filename.name
-                            images.append(fetched)
-                            total_bytes += len(fetched.bytes)
-                            page_index += 1
+                        if not new_image_urls:
+                            # Nothing to fetch — either already seen or empty page.
+                            pass
+                        else:
+                            # Fetch images in parallel chunks. The previous
+                            # serial loop dominated wall time on long chapters
+                            # (a 215-page manga spent most of its budget
+                            # waiting on 215 sequential image GETs).
+                            image_concurrency = max(1, settings.scraper_image_concurrency)
+                            for chunk_start in range(0, len(new_image_urls), image_concurrency):
+                                if page_index > max_pages:
+                                    break
+                                if total_bytes >= max_bytes:
+                                    with SessionLocal() as db:
+                                        job = db.get(ScrapeJob, job_id)
+                                        if job:
+                                            job.status = ScrapeJobStatus.FAILED
+                                            job.error = "Job exceeded max total size"
+                                            job.completed_at = datetime.now(timezone.utc)
+                                            db.commit()
+                                    return
+                                chunk = new_image_urls[chunk_start : chunk_start + image_concurrency]
+                                results = await asyncio.gather(
+                                    *(fetch_image(self._http_session, u) for u in chunk),
+                                    return_exceptions=True,
+                                )
+                                for img_url, fetched_or_exc in zip(chunk, results):
+                                    if isinstance(fetched_or_exc, Exception):
+                                        if isinstance(fetched_or_exc, ValueError):
+                                            logger.warning(
+                                                "scraper_image_skipped",
+                                                url=img_url,
+                                                error=str(fetched_or_exc),
+                                            )
+                                        else:
+                                            logger.warning(
+                                                "scraper_image_error",
+                                                url=img_url,
+                                                error=str(fetched_or_exc),
+                                            )
+                                        continue
+                                    fetched = fetched_or_exc
+                                    page_filename = pages_dir / (
+                                        f"page-{page_index:04d}."
+                                        f"{fetched.filename_hint.rsplit('.', 1)[-1] or 'jpg'}"
+                                    )
+                                    page_filename.write_bytes(fetched.bytes)
+                                    fetched.filename_hint = page_filename.name
+                                    images.append(fetched)
+                                    total_bytes += len(fetched.bytes)
+                                    page_index += 1
 
-                            with SessionLocal() as db:
-                                job = db.get(ScrapeJob, job_id)
-                                if job:
-                                    job.current_page = page_index - 1
-                                    job.total_bytes = total_bytes
-                                    # progress is approximate: scraping = 80% of the work
-                                    job.progress_pct = min(80.0, (page_index - 1) / max(1, max_pages) * 80.0)
-                                    db.commit()
+                                with SessionLocal() as db:
+                                    job = db.get(ScrapeJob, job_id)
+                                    if job:
+                                        job.current_page = page_index - 1
+                                        job.total_bytes = total_bytes
+                                        # progress is approximate: scraping = 80% of the work
+                                        job.progress_pct = min(
+                                            80.0,
+                                            (page_index - 1) / max(1, max_pages) * 80.0,
+                                        )
+                                        db.commit()
 
                         # Determine next URL
                         if stop_after_page:
