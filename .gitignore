@@ -1,0 +1,80 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+
+# Node / Svelte
+node_modules/
+.svelte-kit/
+build/
+.vite/
+*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker
+*.log
+
+# Library data (user-provided, never commit)
+library/
+covers/
+config/
+
+# User books dropped at the project root for quick import — never commit
+/*.epub
+/*.pdf
+/*.mobi
+/*.azw3
+/*.azw
+/*.fb2
+/*.djvu
+/*.docx
+/*.lit
+/*.lrf
+/*.odt
+/*.cbz
+/*.cbr
+
+# Random screenshots left in the project root — never commit.
+# alejandria_nobg.png and alejandria.webp are project assets, re-included below.
+/*.png
+/*.jpg
+/*.jpeg
+/*.gif
+/*.webp
+!/alejandria_nobg.png
+!/alejandria.webp
+
+# Test artifacts
+test-results/
+playwright-report/
+screenshots/*.png
+!screenshots/.gitkeep

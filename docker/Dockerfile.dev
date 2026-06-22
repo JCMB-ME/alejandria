@@ -1,0 +1,57 @@
+# =============================================================================
+# Alejandría development Dockerfile
+# - Hot reload for backend (uvicorn --reload)
+# - Hot reload for frontend (vite dev server)
+# - Mounted source volumes
+# =============================================================================
+FROM python:3.12-slim
+
+# Install runtime deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        tini \
+        gosu \
+        libgl1 \
+        libglib2.0-0 \
+        libnss3 \
+        libpango-1.0-0 \
+        libcairo2 \
+        fonts-noto \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Calibre CLI
+RUN curl -fsSL https://download.calibre-ebook.com/linux-installer/x86_64.sh -o /tmp/calibre.sh \
+    && chmod +x /tmp/calibre.sh \
+    && /tmp/calibre.sh --no-desktop \
+    && rm /tmp/calibre.sh
+ENV PATH="/opt/calibre:${PATH}"
+
+# Python deps
+RUN pip install --no-cache-dir uv
+
+WORKDIR /app
+
+# Install Python project
+COPY backend/pyproject.toml ./
+COPY backend/README.md ./
+RUN uv pip install --system .
+
+# Node.js for frontend dev server
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        nodejs \
+        npm \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+
+WORKDIR /app
+
+COPY docker/entrypoint.dev.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+EXPOSE 8080
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
+CMD ["alejandria-dev"]

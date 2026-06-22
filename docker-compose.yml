@@ -1,0 +1,34 @@
+name: alejandria
+
+services:
+  alejandria:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: alejandria:latest
+    container_name: alejandria
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${ALEJANDRIA_PORT:-8080}:8080"
+    volumes:
+      - library:/library
+      - config:/config
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "com.alejandria.version=0.1.0"
+      - "com.alejandria.description=Self-hosted ebook library"
+
+volumes:
+  library:
+  config:

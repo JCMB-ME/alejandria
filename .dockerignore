@@ -1,0 +1,47 @@
+# Python
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+build
+dist
+.coverage
+htmlcov
+.venv
+venv
+
+# Node
+node_modules
+.svelte-kit
+build
+.vite
+*.tsbuildinfo
+
+# IDE
+.vscode
+.idea
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project
+library
+config
+.env
+.env.local
+*.log
+
+# Tests
+tests
+test-results
+playwright-report
+screenshots
+
+# Docs (not needed in image)
+docs
+*.md
+!backend/README.md
+!backend/pyproject.toml

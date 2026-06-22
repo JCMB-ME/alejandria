@@ -1,0 +1,33 @@
+# Python
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+build
+dist
+.coverage
+htmlcov
+.venv
+venv
+*.so
+
+# IDE
+.vscode
+.idea
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project
+*.db
+*.db-journal
+caches
+metadata_db_prefs_backup.sqlite
+
+# Local config
+.env
+.env.local
+.env.*.local

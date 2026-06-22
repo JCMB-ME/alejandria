@@ -1,0 +1,28 @@
+name: alejandria-dev
+
+services:
+  alejandria-dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    image: alejandria:dev
+    container_name: alejandria-dev
+    env_file:
+      - .env
+    ports:
+      - "${ALEJANDRIA_PORT:-8080}:8080"
+    volumes:
+      - library:/library
+      - config:/config
+      - ./backend/src:/app/backend/src:rw
+      - ./frontend/src:/app/frontend/src:rw
+      - ./frontend/static:/app/frontend/static:rw
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
+      - DEV_MODE=true
+
+volumes:
+  library:
+  config:

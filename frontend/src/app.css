@@ -1,0 +1,282 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =============================================================================
+   Theme variables — light by default, overridden by [data-theme="dark"]
+   ============================================================================= */
+:root,
+[data-theme='light'] {
+  --soft-white: #F3EFE9;
+  --bg: #F5F1E8;
+  --surface: #FBF7EE;
+  --elevated: var(--soft-white);
+  --border: #E4DDD0;
+  --text: #2A2622;
+  --text-muted: #6B5F50;
+  --text-soft: #8C7E6B;
+  --accent: #4462A8;
+  --accent-hover: #355088;
+  --accent-text: var(--soft-white);
+  --link: #4462A8;
+  --danger: #C0392B;
+  --success: #2D8659;
+  --warning: #B8860B;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme='dark'] {
+  --soft-white: #F3EFE9;
+  --bg: #000000;
+  --surface: #000000;
+  --elevated: #0C0C0C;
+  --border: #222222;
+  --text: #F3EFE9;
+  --text-muted: #A5A19A;
+  --text-soft: #75716D;
+  --accent: var(--soft-white);
+  --accent-hover: #FAF6F0;
+  --accent-text: #000000;
+  --link: var(--text);
+  --danger: #E07B6F;
+  --success: #6BBA8E;
+  --warning: #E0BC6B;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.6), 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme='sepia'] {
+  --bg: #F4ECD8;
+  --surface: #F8F1E0;
+  --elevated: #FAF4E5;
+  --border: #D9C9A8;
+  --text: #5B4636;
+  --text-muted: #8A7461;
+  --text-soft: #A8907A;
+  --accent: #A0522D;
+  --accent-hover: #7B3F22;
+  --accent-text: #FAF4E5;
+  --link: #6B4E3D;
+}
+
+/* =============================================================================
+   Base
+   ============================================================================= */
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+  }
+  ::selection {
+    background: var(--accent);
+    color: var(--accent-text);
+  }
+  a {
+    color: var(--link);
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+  /* In dark mode, keep link affordance via underline + slight tone change instead
+     of a different color. This way "Ver todos" reads the same as the rest of
+     the text but is still clearly a link.
+     Exclude .btn* so the "Read" / "Login" / "Save" buttons keep their
+     accent-text color (otherwise the text becomes white on white in dark mode). */
+  [data-theme='dark'] a:not([class*='btn']):not([class*='link']) {
+    color: var(--text);
+  }
+  [data-theme='dark'] a:not([class*='btn']):not([class*='link']):hover {
+    color: var(--text-muted);
+  }
+  hr {
+    border-color: var(--border);
+  }
+  /* Scrollbars */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 5px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-soft);
+  }
+}
+
+/* =============================================================================
+   Component utilities
+   ============================================================================= */
+@layer components {
+  .card {
+    @apply rounded-lg border bg-light-surface dark:bg-dark-surface;
+    border-color: var(--border);
+    box-shadow: var(--shadow);
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: var(--accent-text);
+  }
+  .btn-primary:hover {
+    background: var(--accent-hover);
+  }
+  .btn-secondary {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover {
+    background: var(--elevated);
+  }
+  .btn-ghost {
+    color: var(--text-muted);
+  }
+  .btn-ghost:hover {
+    background: var(--elevated);
+    color: var(--text);
+  }
+  .input {
+    @apply w-full rounded-md px-3 py-2 text-sm transition-colors;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs;
+    background: var(--surface);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+}
+
+/* =============================================================================
+   Reader styles
+   ============================================================================= */
+.reader {
+  font-family: 'Source Serif Pro', Georgia, serif;
+  font-size: var(--reader-font-size, 18px);
+  line-height: var(--reader-line-height, 1.7);
+  max-width: 70ch;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.reader p {
+  margin-bottom: 1em;
+  text-indent: 0;
+}
+
+.reader p + p {
+  text-indent: 1.5em;
+}
+
+.reader h1, .reader h2, .reader h3 {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 600;
+  margin-top: 2em;
+  margin-bottom: 0.5em;
+}
+
+.reader[data-reader-theme='light'] {
+  background: #F5F1E8;
+  color: #2A2622;
+}
+
+.reader[data-reader-theme='sepia'] {
+  background: #F4ECD8;
+  color: #5B4636;
+}
+
+.reader[data-reader-theme='dark'] {
+  background: #000000;
+  color: #F3EFE9;
+}
+
+/* EPUB.js navigation areas */
+.epub-view {
+  background: transparent !important;
+}
+
+/* PDF.js text layer */
+.pdfViewer .textLayer {
+  mix-blend-mode: multiply;
+  opacity: 0.7;
+}
+
+[data-theme='dark'] .pdfViewer .textLayer {
+  mix-blend-mode: screen;
+  opacity: 0.6;
+}
+
+/* Highlight marks */
+mark.alejandria-highlight {
+  background: rgba(255, 213, 79, 0.4);
+  cursor: pointer;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+
+[data-theme='dark'] mark.alejandria-highlight {
+  background: rgba(255, 213, 79, 0.2);
+}
+
+mark.alejandria-highlight[data-color='green'] { background: rgba(129, 199, 132, 0.4); }
+mark.alejandria-highlight[data-color='blue']  { background: rgba(100, 181, 246, 0.4); }
+mark.alejandria-highlight[data-color='pink']  { background: rgba(244, 143, 177, 0.4); }
+mark.alejandria-highlight[data-color='orange']{ background: rgba(255, 171, 64, 0.4); }
+
+/* Ensure external SVG icons loaded via img tags are visible in dark mode by inverting black to light/white */
+[data-theme='dark'] img[src*="/icons/"] {
+  filter: invert(1) brightness(1.5);
+}
+
+/* In dark mode, anything rendered with the legacy accent blue (#4462A8)
+   should match the rest of the text — same light color. */
+[data-theme='dark'] {
+  --accent-legacy: var(--text);
+}
+
+/* Catch the literal color in every common CSS property, in every form it
+   might appear (inline style attribute, computed style, hex, rgb). */
+[data-theme='dark'] [style*="#4462A8"],
+[data-theme='dark'] [style*="#4462a8"],
+[data-theme='dark'] [style*="rgb(68, 98, 168)"],
+[data-theme='dark'] [style*="rgb(68,98,168)"] {
+  color: var(--text) !important;
+  background-color: var(--text) !important;
+  border-color: var(--text) !important;
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+  outline-color: var(--text) !important;
+}
+
+/* Same for class-driven styles: any element that gets the blue via
+   background, color, border-color, fill, stroke, outline. */
+[data-theme='dark'] .bg-\\[\\#4462A8\\],
+[data-theme='dark'] .text-\\[\\#4462A8\\],
+[data-theme='dark'] .border-\\[\\#4462A8\\] {
+  background-color: var(--text) !important;
+  color: var(--text) !important;
+  border-color: var(--text) !important;
+}
