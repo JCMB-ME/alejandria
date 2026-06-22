@@ -70,7 +70,7 @@ class RegisterRequest(BaseModel):
     """Public registration payload (only if enabled)."""
 
     username: str = Field(min_length=3, max_length=64)
-    email: EmailStr
+    email: EmailStr | None = None
     password: str = Field(min_length=8, max_length=128)
     display_name: str | None = Field(default=None, max_length=128)
 

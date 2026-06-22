@@ -17,7 +17,7 @@
   function validate(): string {
     if (username.length < 3) return 'Username must be at least 3 characters';
     if (!/^[a-zA-Z0-9_.-]+$/.test(username)) return 'Username can only contain letters, numbers, _, ., -';
-    if (!email.includes('@')) return 'Please enter a valid email';
+    if (email && !email.includes('@')) return 'Please enter a valid email';
     if (password.length < 8) return 'Password must be at least 8 characters';
     if (password !== passwordConfirm) return 'Passwords do not match';
     return '';
@@ -35,7 +35,7 @@
     try {
       const res = await auth.register({
         username,
-        email,
+        email: email.trim() || undefined,
         password,
         display_name: displayName.trim() || undefined,
       });
@@ -90,12 +90,14 @@
         />
       </div>
       <div>
-        <label for="email" class="block text-sm font-medium mb-1.5">{$t('email')}</label>
+        <label for="email" class="block text-sm font-medium mb-1.5">
+          {$t('email')}
+          <span class="text-[var(--text-soft)] font-normal">({$t('optional')})</span>
+        </label>
         <input
           id="email"
           type="email"
           bind:value={email}
-          required
           autocomplete="email"
           class="input"
           placeholder={$t('email_placeholder')}

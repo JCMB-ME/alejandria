@@ -42,7 +42,7 @@ async def ensure_admin_user() -> None:
         if result is not None:
             return  # At least one user exists
 
-        if not settings.admin_password:
+        if not settings.admin_password or settings.admin_password == "changeme":
             logger.info("first_time_setup_pending_register_via_ui")
             return
 
