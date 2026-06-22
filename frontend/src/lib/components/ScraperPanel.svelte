@@ -144,8 +144,7 @@
             <input
               type="checkbox"
               value={f}
-              checked={formats.includes(f)}
-              onchange={() => toggleFormat(f)}
+              bind:group={formats}
             />
             {f}
           </label>
@@ -159,16 +158,16 @@
         <label class="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
-            checked={destinations.includes('library')}
-            onchange={() => toggleDestination('library')}
+            value="library"
+            bind:group={destinations}
           />
           {$t('scraper_dest_library')}
         </label>
         <label class="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
-            checked={destinations.includes('download')}
-            onchange={() => toggleDestination('download')}
+            value="download"
+            bind:group={destinations}
           />
           {$t('scraper_dest_download')}
         </label>

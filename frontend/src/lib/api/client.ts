@@ -257,7 +257,7 @@ export const users = {
 
 // --- Web scraper ---
 export const scraper = {
-  list: () => api.get<Types.ScrapeJob[]>('/api/scraper/jobs'),
+  list: async () => (await api.get<{ items: Types.ScrapeJob[] }>('/api/scraper/jobs')).items,
   get: (id: number) => api.get<Types.ScrapeJob>(`/api/scraper/jobs/${id}`),
   create: (data: Types.ScrapeJobCreate) =>
     api.post<Types.ScrapeJob>('/api/scraper/jobs', data),
