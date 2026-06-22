@@ -2,6 +2,12 @@ name: alejandria
 
 services:
   alejandria:
+    # Calibre's official CLI is published as x86_64 only. On Apple Silicon
+    # Macs, Docker Desktop transparently emulates this under QEMU — it works
+    # but the first build is 2-3x slower. Pinning the platform here makes
+    # the behavior explicit and prevents "works on my machine" surprises
+    # when collaborators share docker-compose.yml.
+    platform: linux/amd64
     build:
       context: .
       dockerfile: docker/Dockerfile
@@ -12,9 +18,14 @@ services:
       - .env
     ports:
       - "${ALEJANDRIA_PORT:-8080}:8080"
+    # Bind-mount the host directories so books, metadata, and SQLite live
+    # where the README says they do (`./library/` and `./config/`). Earlier
+    # versions used named volumes, which stranded user data outside the
+    # repo. If `./library` or `./config` don't exist, Docker creates them
+    # and the entrypoint's `chown -R` fixes ownership.
     volumes:
-      - library:/library
-      - config:/config
+      - ./library:/library
+      - ./config:/config
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
@@ -28,7 +39,3 @@ services:
     labels:
       - "com.alejandria.version=0.1.0"
       - "com.alejandria.description=Self-hosted ebook library"
-
-volumes:
-  library:
-  config:

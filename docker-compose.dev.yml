@@ -2,6 +2,9 @@ name: alejandria-dev
 
 services:
   alejandria-dev:
+    # Same x86_64 pin as production — see docker-compose.yml for the
+    # Apple Silicon rationale.
+    platform: linux/amd64
     build:
       context: .
       dockerfile: docker/Dockerfile.dev
@@ -11,9 +14,12 @@ services:
       - .env
     ports:
       - "${ALEJANDRIA_PORT:-8080}:8080"
+    # Bind mounts match the production compose so `./library` and
+    # `./config` are the single source of truth in both modes. The three
+    # source mounts beneath let Vite and uvicorn hot-reload on save.
     volumes:
-      - library:/library
-      - config:/config
+      - ./library:/library
+      - ./config:/config
       - ./backend/src:/app/backend/src:rw
       - ./frontend/src:/app/frontend/src:rw
       - ./frontend/static:/app/frontend/static:rw
@@ -22,7 +28,3 @@ services:
       - PGID=${PGID:-1000}
       - TZ=${TZ:-UTC}
       - DEV_MODE=true
-
-volumes:
-  library:
-  config:

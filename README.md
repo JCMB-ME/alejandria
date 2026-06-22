@@ -34,6 +34,62 @@ docker compose up -d
 
 ¡Eso es todo! Tu Alejandría está corriendo. Cualquier ebook que pongas en `./library/` será detectado automáticamente.
 
+### Antes de exponer la app a internet
+
+Los valores por defecto del `.env` (`admin / changeme` y un secret key
+conocido) son cómodos para probar en LAN, pero **son los primeros que un
+bot va a probar**. Si vas a abrir el puerto 8080 al exterior, cambia
+estas dos variables en `.env` **antes** del primer arranque:
+
+```bash
+# Genera un secret key fuerte (cópialo y pégalo en ALEJANDRIA_SECRET_KEY)
+python -c "import secrets; print(secrets.token_urlsafe(64))"
+
+# Cambia también la contraseña inicial
+ALEJANDRIA_ADMIN_PASSWORD=algo-que-no-sea-changeme
+```
+
+Después del primer arranque, la contraseña del admin se cambia desde la
+UI (Ajustes → Usuarios), no desde `.env`.
+
+> Si vas a servir por HTTPS (recomendado), pon la app detrás de un
+> reverse proxy: ver [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
+> para configs listas de Caddy, nginx y Traefik.
+
+### Apple Silicon (M1 / M2 / M3)
+
+El instalador oficial de Calibre solo publica builds **x86_64**, así que
+`docker-compose.yml` declara `platform: linux/amd64` explícitamente. En
+un Mac ARM, Docker Desktop emula esto bajo QEMU — funciona, pero el
+**primer build** tarda ~5-10 min (vs ~3 min en Linux/Intel). Los
+rebuilds posteriores son rápidos gracias al cache de capas.
+
+### Migración desde versiones anteriores (volúmenes nombrados)
+
+Si instalaste Alejandría con un `.env` previo y tus libros están en un
+volumen Docker nombrado (en vez de en `./library/`), necesitas migrar
+una sola vez:
+
+```bash
+# 1. Para el stack
+docker compose down
+
+# 2. Copia el contenido del volumen nombrado a tu ./library local
+docker run --rm -v alejandria_library:/src -v "$(pwd)/library":/dst \
+    alpine sh -c "cp -a /src/. /dst/"
+
+# 3. Repite para config (SQLite, caches, scrapes)
+docker run --rm -v alejandria_config:/src -v "$(pwd)/config":/dst \
+    alpine sh -c "cp -a /src/. /dst/"
+
+# 4. Actualiza docker compose (git pull), borra los volúmenes viejos
+docker compose up -d
+docker volume rm alejandria_library alejandria_config
+```
+
+Después de esto, `./library/` y `./config/` son la fuente de verdad y
+sobreviven a `docker compose down` (sin `-v`).
+
 ---
 
 ## Temas
