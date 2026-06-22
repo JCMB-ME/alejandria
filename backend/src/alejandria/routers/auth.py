@@ -176,7 +176,6 @@ async def register(
 
     user = User(
         username=payload.username,
-        email=payload.email,
         password_hash=hash_password(payload.password),
         display_name=payload.display_name or payload.username,
         role=UserRole.ADMIN,  # first user is always admin

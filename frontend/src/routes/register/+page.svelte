@@ -8,7 +8,6 @@
 
   let username = $state('');
   let displayName = $state('');
-  let email = $state('');
   let password = $state('');
   let passwordConfirm = $state('');
   let loading = $state(false);
@@ -17,7 +16,6 @@
   function validate(): string {
     if (username.length < 3) return 'Username must be at least 3 characters';
     if (!/^[a-zA-Z0-9_.-]+$/.test(username)) return 'Username can only contain letters, numbers, _, ., -';
-    if (email && !email.includes('@')) return 'Please enter a valid email';
     if (password.length < 8) return 'Password must be at least 8 characters';
     if (password !== passwordConfirm) return 'Passwords do not match';
     return '';
@@ -35,7 +33,6 @@
     try {
       const res = await auth.register({
         username,
-        email: email.trim() || undefined,
         password,
         display_name: displayName.trim() || undefined,
       });
@@ -107,20 +104,6 @@
           autocomplete="name"
           class="input"
           placeholder={$t('display_name_placeholder')}
-        />
-      </div>
-      <div>
-        <label for="email" class="block text-sm font-medium mb-1.5">
-          {$t('email')}
-          <span class="text-[var(--text-soft)] font-normal">({$t('optional')})</span>
-        </label>
-        <input
-          id="email"
-          type="email"
-          bind:value={email}
-          autocomplete="email"
-          class="input"
-          placeholder={$t('email_placeholder')}
         />
       </div>
       <div>
