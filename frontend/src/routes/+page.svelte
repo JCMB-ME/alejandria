@@ -118,13 +118,13 @@
   <title>Alejandría — {$t('your_library')}</title>
 </svelte:head>
 
-<div class="p-6 md:p-8 max-w-7xl mx-auto">
-  <header class="mb-8 flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-    <div>
-      <h1 class="font-serif text-3xl md:text-4xl mb-2">
+<div class="p-4 md:p-8 max-w-7xl mx-auto">
+  <header class="mb-6 md:mb-8 flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+    <div class="min-w-0">
+      <h1 class="font-serif text-2xl md:text-4xl mb-2 leading-tight">
         {$t('welcome_back')}{$user?.display_name ? `, ${$user.display_name}` : ''}
       </h1>
-      <p class="text-[var(--text-muted)]">
+      <p class="text-sm md:text-base text-[var(--text-muted)]">
         {#if stats}
           {stats.total_books.toLocaleString()} {$t('books').toLowerCase()} · {stats.total_authors.toLocaleString()} {$t('authors').toLowerCase()} · {stats.total_series.toLocaleString()} {$t('series').toLowerCase()}
         {:else}
@@ -132,10 +132,11 @@
         {/if}
       </p>
     </div>
-    <div class="flex items-center gap-2">
-      <button class="btn btn-secondary flex items-center gap-1.5" onclick={triggerUpload} disabled={uploading}>
+    <div class="flex items-center gap-2 shrink-0">
+      <button class="btn btn-secondary flex items-center gap-1.5 text-sm md:text-base" onclick={triggerUpload} disabled={uploading}>
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        {uploading ? $t('uploading') : $t('upload_book')}
+        <span class="hidden sm:inline">{uploading ? $t('uploading') : $t('upload_book')}</span>
+        <span class="sm:hidden">{$t('upload_book')}</span>
       </button>
       <input
         type="file"
@@ -148,40 +149,40 @@
   </header>
 
   {#if stats}
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-      <div class="card p-4">
-        <div class="text-2xl font-semibold">{stats.total_books.toLocaleString()}</div>
-        <div class="text-sm text-[var(--text-muted)]">{$t('books')}</div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mb-6 md:mb-8">
+      <div class="card p-3 md:p-4">
+        <div class="text-xl md:text-2xl font-semibold">{stats.total_books.toLocaleString()}</div>
+        <div class="text-xs md:text-sm text-[var(--text-muted)]">{$t('books')}</div>
       </div>
-      <div class="card p-4">
-        <div class="text-2xl font-semibold">{stats.total_authors.toLocaleString()}</div>
-        <div class="text-sm text-[var(--text-muted)]">{$t('authors')}</div>
+      <div class="card p-3 md:p-4">
+        <div class="text-xl md:text-2xl font-semibold">{stats.total_authors.toLocaleString()}</div>
+        <div class="text-xs md:text-sm text-[var(--text-muted)]">{$t('authors')}</div>
       </div>
-      <div class="card p-4">
-        <div class="text-2xl font-semibold">{stats.total_tags.toLocaleString()}</div>
-        <div class="text-sm text-[var(--text-muted)]">{$t('tags')}</div>
+      <div class="card p-3 md:p-4">
+        <div class="text-xl md:text-2xl font-semibold">{stats.total_tags.toLocaleString()}</div>
+        <div class="text-xs md:text-sm text-[var(--text-muted)]">{$t('tags')}</div>
       </div>
-      <div class="card p-4">
-        <div class="text-2xl font-semibold">{stats.total_series.toLocaleString()}</div>
-        <div class="text-sm text-[var(--text-muted)]">{$t('series')}</div>
+      <div class="card p-3 md:p-4">
+        <div class="text-xl md:text-2xl font-semibold">{stats.total_series.toLocaleString()}</div>
+        <div class="text-xs md:text-sm text-[var(--text-muted)]">{$t('series')}</div>
       </div>
     </div>
   {/if}
 
   <!-- Anna's Archive Search Integration -->
-  <div class="p-6 mb-8 bg-[var(--surface)] border border-[var(--border)] rounded-lg relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6">
-    <div class="flex-1 w-full">
+  <div class="p-4 md:p-6 mb-6 md:mb-8 bg-[var(--surface)] border border-[var(--border)] rounded-lg relative overflow-hidden flex flex-col md:flex-row md:items-center md:justify-between gap-4 md:gap-6">
+    <div class="flex-1 w-full min-w-0">
       <div class="flex items-center gap-2.5 mb-2">
         <svg class="w-5 h-5 text-[var(--text)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
-        <h3 class="text-lg font-semibold text-[var(--text)]">{$t('annas_archive_title')}</h3>
+        <h3 class="text-base md:text-lg font-semibold text-[var(--text)]">{$t('annas_archive_title')}</h3>
       </div>
       <p class="text-sm text-[var(--text-soft)] max-w-xl">
         {$t('annas_archive_desc')}
       </p>
-      
+
       <form onsubmit={searchAnnas} class="flex gap-2 mt-4 max-w-md">
         <input
           type="text"
@@ -194,7 +195,7 @@
         </button>
       </form>
     </div>
-    
+
     <div class="flex flex-col gap-2 shrink-0 w-full md:w-auto">
       <span class="text-xs font-semibold uppercase tracking-wider text-[var(--text-soft)] mb-0.5 block md:text-right">{$t('mirrors')}</span>
       <div class="flex flex-col gap-2">
@@ -215,8 +216,8 @@
 
   <section>
     <div class="flex items-center justify-between mb-4">
-      <h2 class="text-xl font-semibold">{$t('recently_added')}</h2>
-      <a href="/library?sort=timestamp&order=desc" class="text-sm text-[var(--link)] hover:underline">
+      <h2 class="text-lg md:text-xl font-semibold">{$t('recently_added')}</h2>
+      <a href="/library?sort=timestamp&order=desc" class="text-sm text-[var(--link)] hover:underline whitespace-nowrap">
         {$t('view_all')}
       </a>
     </div>

@@ -35,6 +35,9 @@ build/
 *.swp
 *.swo
 
+# Local Claude / agent tooling (browser screenshots, scratch downloads, etc.)
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
