@@ -5,8 +5,8 @@
  * - API: network-only (auth)
  */
 
-const CACHE_NAME = 'alejandria-v1';
-const STATIC_CACHE = 'alejandria-static-v1';
+const CACHE_NAME = 'alejandria-v2';
+const STATIC_CACHE = 'alejandria-static-v2';
 
 const PRECACHE = [
   '/',
