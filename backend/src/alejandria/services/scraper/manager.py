@@ -270,6 +270,153 @@ class ScraperManager:
                 return adapter
         return self._generic
 
+    async def _refresh_session_token(
+        self, original_url: str, target_page: int, max_attempts: int = 3
+    ) -> str | None:
+        """Recover a fresh session token after the server kicked us out.
+
+        Strategy: strip the (likely-expired) token from the chapter URL,
+        load the chapter landing page in a fresh browser tab, and let
+        the site issue a new token. The new token typically appears in
+        one of three places:
+
+          1. The address bar after a server-side redirect (the site
+             adds &token=... back to the URL).
+          2. The src attribute of the chapter's first <img>.
+          3. A link inside the page (next page, reader UI, etc.).
+
+        We try all three. If we can build a working URL containing the
+        target page number, return it. Otherwise return None and let
+        the caller mark the job FAILED.
+
+        Args:
+            original_url: the chapter URL the user pasted (includes the
+                now-stale token and page=1).
+            target_page: the page index we were trying to fetch when the
+                session died. We need the new URL to point at this page.
+
+        Returns:
+            A new URL of the form `...?chapter=X&token=NEW&page=N`, or
+            None if recovery failed.
+        """
+        from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+        if not self._browser:
+            return None
+
+        parsed = urlparse(original_url)
+        qs = parse_qs(parsed.query)
+        chapter_id = (qs.get("chapter") or [""])[0]
+        if not chapter_id:
+            return None
+
+        # The URL we hit to mint a fresh token: chapter base + page=1,
+        # explicitly without a token. The site is then free to assign
+        # whatever token it wants.
+        seed_qs = {"chapter": [chapter_id], "page": ["1"]}
+        seed_url = urlunparse(
+            parsed._replace(query=urlencode(seed_qs, doseq=True))
+        )
+
+        for attempt in range(1, max_attempts + 1):
+            page = await self._browser.new_page()
+            try:
+                try:
+                    await page.goto(
+                        seed_url, wait_until="domcontentloaded", timeout=30_000
+                    )
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(
+                        "scraper_token_refresh_navigate_failed",
+                        attempt=attempt,
+                        error=str(e),
+                    )
+                    continue
+
+                try:
+                    await page.wait_for_load_state(
+                        "domcontentloaded", timeout=5_000
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+
+                # 1. Did the site put a token in the address bar?
+                current_url = page.url
+                current_qs = parse_qs(urlparse(current_url).query)
+                new_token = (current_qs.get("token") or [None])[0]
+                if new_token:
+                    rebuilt = current_qs.copy()
+                    rebuilt["page"] = [str(target_page)]
+                    rebuilt["token"] = [new_token]
+                    new_url = urlunparse(
+                        urlparse(current_url)._replace(
+                            query=urlencode(rebuilt, doseq=True)
+                        )
+                    )
+                    return new_url
+
+                # 2. Mine the first <img> for a token-bearing URL.
+                img_src = await page.evaluate(
+                    """
+                    () => {
+                      const im = document.querySelector('img[src*="token="]');
+                      return im ? im.src : null;
+                    }
+                    """
+                )
+                if img_src:
+                    img_qs = parse_qs(urlparse(img_src).query)
+                    new_token = (img_qs.get("token") or [None])[0]
+                    if new_token:
+                        rebuilt = {"chapter": [chapter_id],
+                                  "token": [new_token],
+                                  "page": [str(target_page)]}
+                        new_url = urlunparse(
+                            parsed._replace(
+                                query=urlencode(rebuilt, doseq=True)
+                            )
+                        )
+                        return new_url
+
+                # 3. Look for a reader link with a token in the href.
+                href = await page.evaluate(
+                    """
+                    () => {
+                      const a = document.querySelector(
+                        'a[href*="reader_v2.php"][href*="token="]'
+                      );
+                      return a ? a.href : null;
+                    }
+                    """
+                )
+                if href:
+                    href_qs = parse_qs(urlparse(href).query)
+                    new_token = (href_qs.get("token") or [None])[0]
+                    if new_token:
+                        rebuilt = {"chapter": [chapter_id],
+                                  "token": [new_token],
+                                  "page": [str(target_page)]}
+                        new_url = urlunparse(
+                            parsed._replace(
+                                query=urlencode(rebuilt, doseq=True)
+                            )
+                        )
+                        return new_url
+
+                logger.warning(
+                    "scraper_token_refresh_no_token_found",
+                    attempt=attempt,
+                    seed_url=seed_url[:120],
+                    final_url=current_url[:120],
+                )
+            finally:
+                try:
+                    await page.close()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        return None
+
     async def _ensure_browser(self) -> None:
         """Lazily start Playwright + Chromium and an aiohttp session."""
         if self._browser is not None and self._http_session is not None:
@@ -450,8 +597,10 @@ class ScraperManager:
                         # Distinguish "session lost" (the site redirected
                         # us away from the chapter — token expired or
                         # rate limited) from "we ran past the end of the
-                        # chapter". The former should fail loudly so the
-                        # user knows to re-authenticate.
+                        # chapter". The former gets a recovery attempt:
+                        # we load the chapter page in a fresh browser tab
+                        # so the site issues a new session token, then
+                        # resume from where we left off.
                         #
                         # Heuristic: if the chapter id is in the requested
                         # URL but not in the final URL after the fetch,
@@ -475,10 +624,36 @@ class ScraperManager:
                             )
                         )
                         if bounced:
+                            # Try to recover by re-loading the chapter
+                            # landing page. Most readers issue a fresh
+                            # token on every chapter hit; if the site is
+                            # cooperative, we can keep going without
+                            # bothering the user.
+                            recovered_url = await self._refresh_session_token(
+                                url, page_index
+                            )
+                            if recovered_url:
+                                logger.info(
+                                    "scraper_session_refreshed",
+                                    job_id=job_id,
+                                    page=page_index,
+                                    recovered_url=recovered_url[:120],
+                                )
+                                # Replace next_url so the outer loop retries
+                                # the same page with the new token. Also
+                                # remove the failed URL from visited_urls
+                                # so we can re-enter the loop cleanly.
+                                visited_urls.discard(current_url)
+                                next_url = recovered_url
+                                # Don't increment page_index or break —
+                                # let the loop re-process this page.
+                                await asyncio.sleep(1)
+                                continue
                             msg = (
                                 f"Session lost on page {page_index}: site "
-                                f"redirected to {snapshot.final_url}. "
-                                f"Re-authenticate and retry."
+                                f"redirected to {snapshot.final_url} and "
+                                f"token refresh failed. Re-authenticate "
+                                f"and retry."
                             )
                             logger.warning(
                                 "scraper_session_lost",
