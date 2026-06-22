@@ -19,6 +19,11 @@
   let jobs = $state<ScrapeJob[]>([]);
   let pollTimer: ReturnType<typeof setInterval> | null = null;
 
+  // NOTE: the terminal-state modal lives in <ScraperNotifier /> which
+  // is mounted in the root layout. That way the modal appears no matter
+  // which page the user is on when the scrape finishes. The poll below
+  // only updates the local jobs list for the in-panel status display.
+
   const ALL_FORMATS: ScrapeFormat[] = ['PDF', 'EPUB', 'CBZ'];
 
   async function refreshJobs() {
@@ -42,6 +47,14 @@
         formats,
         destinations: ['library'],
       });
+      // Notify the global ScraperNotifier (mounted in +layout) so its
+      // poll loop wakes up immediately instead of waiting for its next
+      // 3s tick. The notifier also watches for terminal transitions.
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('scraper-job-started', { detail: { job_id: job.id } })
+        );
+      }
       toast.success($t('scraper_create_success'));
       url = '';
       jobs = [job, ...jobs];
@@ -103,13 +116,23 @@
   <p class="text-sm text-[var(--text-soft)] max-w-xl mb-2">
     {$t('scraper_desc')}
   </p>
-  <p class="text-xs text-[var(--text-muted)] mb-4">
-    {$t('scraper_copyright_notice')}
+  <p class="text-xs text-[var(--text-muted)] mb-4 flex items-center gap-1.5">
+    <!--
+      Open-book icon. Matches the visual language of the search icon
+      used in the Anna's Archive header (above). Placed inline with
+      the copyright notice so the relationship "scraper → source" is
+      obvious at a glance.
+    -->
+    <svg class="w-3.5 h-3.5 inline-block shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+    </svg>
+    <span>{$t('scraper_copyright_notice')}</span>
     <a
       href="https://www.yupmanga.com/"
       target="_blank"
       rel="noopener noreferrer"
-      class="text-[var(--accent)] hover:underline ml-1"
+      class="text-[var(--accent)] hover:underline"
     >yupmanga.com</a>
   </p>
 

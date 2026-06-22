@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { library, books } from '$api/client';
   import BookGrid from '$components/BookGrid.svelte';
   import ScraperPanel from '$components/ScraperPanel.svelte';
@@ -20,6 +20,17 @@
   let loading = $state(true);
   let annasQuery = $state('');
   let bestDomain = $state('annas-archive.pk');
+  // Poll the library for new books so the "Recently added" grid updates
+  // without a manual refresh — important because the scraper can finish
+  // an import while the user is staring at this page watching the
+  // progress bar.
+  let recentPollTimer: ReturnType<typeof setInterval> | null = null;
+  // The first book id from the last successful poll. Used to detect
+  // when a new book has appeared at the top of the list (i.e. the
+  // scraper just finished importing, or a manual upload landed). When
+  // the id changes, also bump stats so the counters refresh.
+  let lastTopBookId: number | null = null;
+  const RECENT_POLL_MS = 3000;
 
   // Same upload flow as /library
   let fileInput = $state<HTMLInputElement>();
@@ -100,6 +111,28 @@
     }
   }
 
+  async function refreshRecent(opts: { updateStats: boolean }) {
+    try {
+      const recentRes = await books.list({
+        sort: 'timestamp',
+        order: 'desc',
+        page_size: 12,
+      });
+      const newTop = recentRes.items[0]?.id ?? null;
+      const hasNewBook = newTop !== null && newTop !== lastTopBookId;
+      recent = recentRes.items;
+      lastTopBookId = newTop;
+      // Only refresh stats when something actually changed — saves a
+      // request every tick when the library is idle.
+      if (opts.updateStats || hasNewBook) {
+        stats = await library.stats();
+      }
+    } catch {
+      // Silent: the next tick will retry. Network blips shouldn't
+      // surface errors here — the scraper modal is the loud channel.
+    }
+  }
+
   onMount(async () => {
     checkLatencies();
     try {
@@ -109,9 +142,21 @@
       ]);
       stats = statsData;
       recent = recentRes.items;
+      lastTopBookId = recentRes.items[0]?.id ?? null;
     } finally {
       loading = false;
     }
+    // Poll for new books. The first tick is delayed by one interval so
+    // the initial load above has time to settle; subsequent ticks
+    // happen on the cadence.
+    recentPollTimer = setInterval(
+      () => refreshRecent({ updateStats: false }),
+      RECENT_POLL_MS
+    );
+  });
+  onDestroy(() => {
+    if (recentPollTimer) clearInterval(recentPollTimer);
+    recentPollTimer = null;
   });
 </script>
 

@@ -7,6 +7,7 @@
   import Sidebar from '$components/Sidebar.svelte';
   import Header from '$components/Header.svelte';
   import Toaster from '$components/Toaster.svelte';
+  import ScraperNotifier from '$components/ScraperNotifier.svelte';
 
   import { initLanguage } from '$stores/i18n';
   import { auth as authApi } from '$api/client';
@@ -68,6 +69,7 @@
 </script>
 
 <Toaster />
+<ScraperNotifier />
 
 {#if $user}
   {#if $page.url.pathname.startsWith('/read/')}

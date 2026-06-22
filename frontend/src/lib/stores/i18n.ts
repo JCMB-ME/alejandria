@@ -214,6 +214,14 @@ export const translations = {
     scraper_cancelled: 'Cancelled',
     scraper_test_no_images: 'No images found on that URL.',
     scraper_test_no_next: 'No next-page link detected.',
+    scraper_notice_done_title: 'Download complete',
+    scraper_notice_done_body: '{title} is ready in your library.',
+    scraper_notice_done_pages: '{n} pages downloaded',
+    scraper_notice_failed_title: 'Download failed',
+    scraper_notice_failed_body: 'The scraper stopped before finishing.',
+    scraper_notice_error_label: 'Error details',
+    scraper_notice_close: 'Close',
+    scraper_notice_view: 'View result',
   },
   es: {
     // General / Layout
@@ -423,6 +431,14 @@ export const translations = {
     scraper_cancelled: 'Cancelado',
     scraper_test_no_images: 'No se encontraron imágenes en esa URL.',
     scraper_test_no_next: 'No se detectó enlace de siguiente página.',
+    scraper_notice_done_title: 'Descarga completa',
+    scraper_notice_done_body: '{title} está listo en tu biblioteca.',
+    scraper_notice_done_pages: '{n} páginas descargadas',
+    scraper_notice_failed_title: 'La descarga falló',
+    scraper_notice_failed_body: 'La extracción se detuvo antes de terminar.',
+    scraper_notice_error_label: 'Detalles del error',
+    scraper_notice_close: 'Cerrar',
+    scraper_notice_view: 'Ver resultado',
   }
 };
 
