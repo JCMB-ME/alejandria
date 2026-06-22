@@ -69,6 +69,23 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Pin reader font sizes to the user's choice (1rem = 16px by default).
+       Without this, iOS Safari "Larger Text" silently rescales rem-based
+       sizes, which would make the EPUB/CBZ/PDF reader text look fine on
+       the home page but tiny inside the reader (or vice-versa). */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  /* App-height custom property. The reader uses this instead of h-screen
+     so the mobile address bar's appearance/disappearance doesn't leave
+     a dead band at the bottom. */
+  :root {
+    --app-h: 100vh;
+  }
+  @supports (height: 100dvh) {
+    :root {
+      --app-h: 100dvh;
+    }
   }
   body {
     background: var(--bg);
@@ -168,6 +185,14 @@
     color: var(--text-muted);
     border: 1px solid var(--border);
   }
+  /* Min hit area for thumbs on touch screens. Apple HIG requires 44×44pt,
+     Material requires 48×48dp. We go with 44px which works on both. Use
+     this on every interactive surface inside the reader toolbar and the
+     mobile nav, otherwise thumb taps miss by a few pixels. */
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 /* =============================================================================
@@ -175,7 +200,7 @@
    ============================================================================= */
 .reader {
   font-family: 'Source Serif Pro', Georgia, serif;
-  font-size: var(--reader-font-size, 18px);
+  font-size: var(--reader-font-size, 1.125rem);
   line-height: var(--reader-line-height, 1.7);
   max-width: 70ch;
   margin: 0 auto;
