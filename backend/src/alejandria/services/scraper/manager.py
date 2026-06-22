@@ -357,6 +357,17 @@ class ScraperManager:
                 total_bytes = 0
                 max_bytes = settings.scraper_max_total_size_mb * 1024 * 1024
                 max_pages = settings.scraper_max_pages_per_job
+                # Track visited page URLs so a chapter-rolling-over "next"
+                # link doesn't loop us into the next chapter's first page.
+                visited_urls: set[str] = set()
+                # Track image src URLs seen so far. If the same src appears
+                # twice, the site has rolled us back to a page we already
+                # collected (typical: the first page of the next chapter,
+                # or a "no more pages" landing screen).
+                seen_image_srcs: set[str] = set()
+                # Set by the inner loop when a repeat image is detected;
+                # prevents adapter.next_url from overwriting the stop signal.
+                stop_after_page = False
 
                 while next_url and page_index <= max_pages:
                     # Cancel check
@@ -367,6 +378,20 @@ class ScraperManager:
                         if job.status == ScrapeJobStatus.CANCELLED:
                             return
                         current_status = job.status
+                    stop_after_page = False
+
+                    # End-of-book detection: if the next URL is the same as
+                    # one we already visited, the chapter has rolled over
+                    # into the next one and the next page would be a repeat.
+                    if next_url in visited_urls:
+                        logger.info(
+                            "scraper_end_of_book_detected",
+                            job_id=job_id,
+                            page=page_index,
+                            next_url=next_url,
+                        )
+                        break
+                    visited_urls.add(next_url)
                     if current_status == ScrapeJobStatus.CANCELLED:
                         return
 
@@ -398,6 +423,19 @@ class ScraperManager:
                                         job.completed_at = datetime.now(timezone.utc)
                                         db.commit()
                                 return
+                            # Reject any image src we've already collected.
+                            # The next-chapter "first page" trick is the
+                            # usual reason this fires.
+                            if img_url in seen_image_srcs:
+                                logger.info(
+                                    "scraper_repeat_image_detected",
+                                    job_id=job_id,
+                                    page=page_index,
+                                    img_url=img_url[:200],
+                                )
+                                stop_after_page = True
+                                break
+                            seen_image_srcs.add(img_url)
                             try:
                                 fetched = await fetch_image(
                                     self._http_session, img_url
@@ -430,11 +468,14 @@ class ScraperManager:
                                     db.commit()
 
                         # Determine next URL
-                        try:
-                            next_url = await adapter.next_url(page, current_url, page_index - 1)
-                        except Exception as e:  # noqa: BLE001
-                            logger.warning("scraper_next_url_failed", error=str(e))
+                        if stop_after_page:
                             next_url = None
+                        else:
+                            try:
+                                next_url = await adapter.next_url(page, current_url, page_index - 1)
+                            except Exception as e:  # noqa: BLE001
+                                logger.warning("scraper_next_url_failed", error=str(e))
+                                next_url = None
                     finally:
                         try:
                             await page.close()
