@@ -106,6 +106,70 @@ Single port (8080). Single image. Volume mounts for library + config.
 | `/library/metadata.db` | Calibre's metadata DB | (part of library) |
 | `/config/alejandria.db` | App DB (users, progress, etc.) | yes |
 | `/config/caches/` | Conversion cache, cover cache | yes |
+| `/config/scrapes/` | Web-scraper output (downloads, partial results) | yes |
+
+## Web scraper
+
+The web-scraper subsystem turns paginated online books (image scans,
+comics, simple readers) into PDF, EPUB, or CBZ files. See
+[`SCRAPER.md`](SCRAPER.md) for the user-facing guide.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                     Scraper subsystem                        │
+│                                                              │
+│  ┌──────────────┐    ┌────────────────┐    ┌──────────────┐  │
+│  │  ScraperPanel│───►│ /api/scraper/* │───►│ ScraperMgr   │  │
+│  │  (Svelte 5)  │    │  router        │    │  (DB-backed  │  │
+│  └──────────────┘    └────────────────┘    │   queue)     │  │
+│                                            └──────┬───────┘  │
+│                                                   │          │
+│                              ┌────────────────────┼────────┐ │
+│                              ▼                    ▼        ▼ │
+│                       ┌──────────────┐   ┌─────────┐ ┌────────┐ │
+│                       │ Playwright   │   │ YAML    │ │ SSRF   │ │
+│                       │ (Chromium)   │   │ adapters│ │ check  │ │
+│                       └──────┬───────┘   └─────────┘ └────────┘ │
+│                              ▼                                 │
+│                       ┌──────────────┐                         │
+│                       │ aiohttp      │                         │
+│                       │ (image fetch)│                         │
+│                       └──────┬───────┘                         │
+│                              ▼                                 │
+│                  ┌────────┬────────┬────────┐                  │
+│                  ▼        ▼        ▼        │                  │
+│              ┌───────┐┌───────┐┌───────┐    │                  │
+│              │ PDF   ││ EPUB  ││ CBZ   │    │                  │
+│              │(img2  ││(ebook ││(zip)  │    │                  │
+│              │ pdf)  ││ lib)  ││       │    │                  │
+│              └───┬───┘└───┬───┘└───┬───┘    │                  │
+│                  └────────┼────────┘         │                  │
+│                           ▼                  │                  │
+│                  ┌─────────────────┐         │                  │
+│                  │ calibredb add   │─────────┘                  │
+│                  │ (import to lib) │                            │
+│                  └─────────────────┘                            │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Key properties:
+
+- **DB-backed queue.** Jobs are rows in `scrape_job`. The `ScraperManager`
+  is started in the FastAPI lifespan; it spawns a single background pump
+  task that polls every 5 s and claims queued jobs with an
+  `asyncio.Semaphore(MAX_CONCURRENT_JOBS)`.
+- **Crash recovery.** On `start()` any job left in `scraping` or
+  `packaging` from a previous run is marked `failed` with
+  "Server restarted while job was running".
+- **SSRF protection.** Every URL is checked against a blocklist of
+  loopback / private / link-local / CGNAT / IPv6 ULA ranges before any
+  egress. Non-HTTP schemes are rejected.
+- **Stream-safe image fetch.** `aiohttp` streams the body; Pillow only
+  reads the image header (~64 KB) to check dimensions; full bitmap is
+  never decoded by the scraper.
+- **Library import.** When `destinations` includes `library`, the
+  assembled file is added via `calibredb add` and the resulting Calibre
+  IDs are persisted on the row (`imported_book_ids`).
 
 ## Security
 

@@ -66,6 +66,7 @@ def init_db() -> None:
         annotation,
         highlight,
         progress,
+        scrape_job,
         session,
         shelf,
         user,

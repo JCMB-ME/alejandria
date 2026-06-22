@@ -169,3 +169,57 @@ export interface Annotation {
   created_at: string;
   updated_at: string;
 }
+
+// --- Web scraper ---
+
+export type ScrapeJobStatus =
+  | 'queued' | 'scraping' | 'packaging' | 'done' | 'failed' | 'cancelled';
+
+export type ScrapeFormat = 'PDF' | 'EPUB' | 'CBZ';
+export type ScrapeDestination = 'library' | 'download';
+
+export interface ScrapeJob {
+  id: number;
+  url: string;
+  title: string | null;
+  adapter_name: string;
+  formats: ScrapeFormat[];
+  destinations: ScrapeDestination[];
+  status: ScrapeJobStatus;
+  total_pages: number;
+  current_page: number;
+  progress_pct: number;
+  total_bytes: number;
+  error: string | null;
+  output_paths: Record<string, string> | null;
+  imported_book_ids: Record<string, number> | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface ScrapeJobCreate {
+  url: string;
+  formats: ScrapeFormat[];
+  destinations: ScrapeDestination[];
+  adapter_name?: string;
+  title?: string;
+}
+
+export interface AdapterImageCandidate {
+  url: string;
+  width: number;
+  height: number;
+}
+
+export interface AdapterNextCandidate {
+  selector: string;
+  href: string | null;
+  text: string | null;
+}
+
+export interface AdapterTestResult {
+  image_candidates: AdapterImageCandidate[];
+  next_candidates: AdapterNextCandidate[];
+  adapter_used: string;
+}

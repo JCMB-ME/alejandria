@@ -38,6 +38,10 @@ build/
 # Local Claude / agent tooling (browser screenshots, scratch downloads, etc.)
 .claude/
 
+# RIPER-5 process artifacts (local plans, drafts, reports, references).
+# process/ is the local bitácora; only docs/process/ is part of the product.
+process/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -26,11 +26,13 @@ from alejandria.routers import (
     library,
     opds,
     reader,
+    scraper,
     settings as settings_router,
     shelves,
     stats,
 )
 from alejandria.services.scanner import LibraryScanner
+from alejandria.services.scraper.manager import get_scraper_manager
 from alejandria.utils.bootstrap import ensure_admin_user, ensure_library_dirs
 
 logger = structlog.get_logger(__name__)
@@ -80,11 +82,23 @@ async def lifespan(app: FastAPI):
     app.state.scanner = scanner
     scanner.start()
 
+    # Start scraper manager
+    scraper_manager = get_scraper_manager()
+    app.state.scraper_manager = scraper_manager
+    try:
+        await scraper_manager.start()
+    except Exception as e:  # noqa: BLE001
+        logger.error("scraper_manager_start_failed", error=str(e))
+
     logger.info("alejandria_ready", url=f"http://{settings.host}:{settings.port}")
     yield
 
     # Shutdown
     logger.info("alejandria_stopping")
+    try:
+        await scraper_manager.stop()
+    except Exception:  # noqa: BLE001
+        pass
     scanner.stop()
 
 
@@ -123,6 +137,7 @@ def create_app() -> FastAPI:
     app.include_router(stats.router, prefix="/api/stats", tags=["stats"])
     app.include_router(settings_router.router, prefix="/api/settings", tags=["settings"])
     app.include_router(highlights.router, prefix="/api/highlights", tags=["highlights"])
+    app.include_router(scraper.router, prefix="/api/scraper", tags=["scraper"])
     app.include_router(opds.router, prefix="/opds", tags=["opds"])
 
     # Global exception handler

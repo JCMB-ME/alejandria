@@ -104,6 +104,7 @@ Más detalles en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - Send-to-Kindle (vía SMTP)
 - Conversión entre formatos (vía Calibre CLI)
 - Watcher de carpeta (auto-detecta libros nuevos)
+- **Web scraper** — convierte libros paginados en línea (image scans, comics) en PDF / EPUB / CBZ, los importa a la biblioteca o los deja descargables. Ver [`docs/SCRAPER.md`](docs/SCRAPER.md).
 
 ### Lectura
 - Progreso sincronizado por dispositivo

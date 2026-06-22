@@ -72,7 +72,30 @@ class Settings(BaseSettings):
     # Misc
     timezone: str = "UTC"
 
-    @field_validator("library_path", "config_path", "caches_path", "db_path")
+    # Web scraper
+    scraper_enabled: bool = True
+    scraper_output_dir: Path = Path("/config/scrapes")
+    scraper_max_concurrent_jobs: int = 2
+    scraper_max_pages_per_job: int = 2000
+    scraper_default_delay_ms: int = 500
+    scraper_max_total_size_mb: int = 500
+    scraper_browser_headless: bool = True
+    scraper_adapters_file: Path = Path("/config/site-adapters.yaml")
+    scraper_proxy: str = ""
+    scraper_user_agent: str = (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
+    scraper_max_jobs_per_hour: int = 10
+
+    @field_validator(
+        "library_path",
+        "config_path",
+        "caches_path",
+        "db_path",
+        "scraper_output_dir",
+        "scraper_adapters_file",
+    )
     @classmethod
     def ensure_absolute(cls, v: Path) -> Path:
         """Ensure paths are absolute."""

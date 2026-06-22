@@ -255,4 +255,21 @@ export const users = {
   delete: (id: number) => api.delete<void>(`/api/settings/users/${id}`),
 };
 
+// --- Web scraper ---
+export const scraper = {
+  list: () => api.get<Types.ScrapeJob[]>('/api/scraper/jobs'),
+  get: (id: number) => api.get<Types.ScrapeJob>(`/api/scraper/jobs/${id}`),
+  create: (data: Types.ScrapeJobCreate) =>
+    api.post<Types.ScrapeJob>('/api/scraper/jobs', data),
+  cancel: (id: number) =>
+    api.post<Types.ScrapeJob>(`/api/scraper/jobs/${id}/cancel`, {}),
+  downloadUrl: (id: number, fmt: Types.ScrapeFormat) =>
+    `/api/scraper/jobs/${id}/download/${fmt}`,
+  testAdapter: (url: string, adapter_name?: string) =>
+    api.post<Types.AdapterTestResult>('/api/scraper/adapters/test', {
+      url,
+      adapter_name,
+    }),
+};
+
 export default api;

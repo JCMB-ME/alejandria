@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { library, books } from '$api/client';
   import BookGrid from '$components/BookGrid.svelte';
+  import ScraperPanel from '$components/ScraperPanel.svelte';
   import type { BookSummary, LibraryStats } from '$api/types';
   import { goto } from '$app/navigation';
   import { user } from '$stores/auth';
@@ -213,6 +214,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Web scraper block (between annas archive and recently added) -->
+  <ScraperPanel />
 
   <section>
     <div class="flex items-center justify-between mb-4">

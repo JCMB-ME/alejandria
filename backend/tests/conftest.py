@@ -1,17 +1,27 @@
 """Test fixtures."""
 
 import os
+import tempfile
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 # Set test env vars before importing app
+_TEST_DB_PATH = os.path.join(tempfile.gettempdir(), "alejandria-test-shared.db")
+# Remove a stale DB from a previous test run.
+if os.path.exists(_TEST_DB_PATH):
+    try:
+        os.remove(_TEST_DB_PATH)
+    except OSError:
+        pass
 os.environ["ALEJANDRIA_SECRET_KEY"] = "test-secret-key-for-testing-only"
-os.environ["ALEJANDRIA_DB_PATH"] = ":memory:"
+os.environ["ALEJANDRIA_DB_PATH"] = _TEST_DB_PATH
 os.environ["ALEJANDRIA_LIBRARY_PATH"] = "/tmp/alejandria-test-library"
 os.environ["ALEJANDRIA_CONFIG_PATH"] = "/tmp/alejandria-test-config"
 os.environ["ALEJANDRIA_ADMIN_PASSWORD"] = "testpass"
 os.environ["ALEJANDRIA_DEV_MODE"] = "true"
+os.environ["ALEJANDRIA_SCRAPER_OUTPUT_DIR"] = "/tmp/alejandria-test-scrapes"
+os.environ["ALEJANDRIA_SCRAPER_ADAPTERS_FILE"] = "/tmp/alejandria-test-adapters.yaml"
 
 from alejandria.db import Base, get_db
 from alejandria.models import user  # noqa: F401
@@ -43,3 +53,14 @@ def client():
     app = create_app()
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture
+def scraper_manager():
+    """A ScraperManager with the browser lazy-loaded but not started — for
+    unit tests. Use monkeypatch to skip the Playwright init."""
+    from alejandria.services.scraper.manager import ScraperManager
+
+    m = ScraperManager()
+    m._browser = None  # ensure lazy
+    return m

@@ -1,0 +1,38 @@
+"""Abstract site adapter for the scraper.
+
+An adapter knows how to:
+  1. Match a URL (so the manager can pick the right adapter for a job).
+  2. Fetch a single page in a Playwright browser, returning the candidate
+     image URLs and any "next page" hint.
+  3. Compute the URL of the next page (or None when the book ends).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
+
+
+@dataclass
+class PageSnapshot:
+    """Result of fetching a single page."""
+
+    image_urls: list[str] = field(default_factory=list)
+    next_url: str | None = None
+    cookies_to_persist: dict[str, str] = field(default_factory=dict)
+    headers_to_persist: dict[str, str] = field(default_factory=dict)
+
+
+@runtime_checkable
+class SiteAdapter(Protocol):
+    """Protocol every site adapter implements."""
+
+    name: str
+
+    def matches(self, url: str) -> bool: ...
+
+    async def fetch_page(self, browser: object, url: str) -> PageSnapshot: ...
+
+    async def next_url(
+        self, page: object, current_url: str, page_index: int
+    ) -> str | None: ...

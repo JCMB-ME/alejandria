@@ -81,6 +81,22 @@ COPY backend/src ./src
 
 
 # -----------------------------------------------------------------------------
+# Stage 3b: Playwright Chromium (separated for layer caching — only rebuilds
+# if pyproject deps or PLAYWRIGHT_BROWSERS_PATH change)
+# -----------------------------------------------------------------------------
+FROM backend-builder AS playwright-installer
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+        libxkbcommon0 libatspi2.0-0 libxcomposite1 libxdamage1 \
+        libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 \
+        libasound2 fonts-liberation \
+    && rm -rf /var/lib/apt/lists/* \
+    && PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers \
+       python -m playwright install chromium --with-deps
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
+
+
+# -----------------------------------------------------------------------------
 # Stage 4: Final runtime image
 # -----------------------------------------------------------------------------
 FROM python:3.12-slim AS runtime
@@ -118,6 +134,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy Calibre from installer stage
 COPY --from=calibre-installer /opt/calibre /opt/calibre
 ENV PATH="/opt/calibre:${PATH}"
+
+# Copy Playwright browsers (chromium only)
+COPY --from=playwright-installer /opt/playwright-browsers /opt/playwright-browsers
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 
 # Copy Python packages
 COPY --from=backend-builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages

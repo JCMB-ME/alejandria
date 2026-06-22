@@ -20,7 +20,12 @@ logger = get_logger(__name__)
 def ensure_library_dirs() -> None:
     """Create required directories if they don't exist."""
     settings = get_settings()
-    for path in (settings.library_path, settings.config_path, settings.caches_path):
+    for path in (
+        settings.library_path,
+        settings.config_path,
+        settings.caches_path,
+        settings.scraper_output_dir,
+    ):
         path.mkdir(parents=True, exist_ok=True)
     # Covers cache subdirectory
     (settings.caches_path / "covers").mkdir(parents=True, exist_ok=True)

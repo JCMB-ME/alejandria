@@ -52,6 +52,11 @@ WORKDIR /app
 COPY docker/entrypoint.dev.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
+# Install Playwright Chromium for the web scraper
+RUN PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers \
+    python -m playwright install chromium --with-deps
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
+
 EXPOSE 8080
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
 CMD ["alejandria-dev"]

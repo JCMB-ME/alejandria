@@ -58,6 +58,25 @@ These follow the [linuxserver.io](https://docs.linuxserver.io/general/understand
 
 Don't forget to add your sending address to your Kindle's [Approved Senders list](https://www.amazon.com/gp/help/customer/display.html?nodeId=GX7NJGSBGJSXC4ZB).
 
+## Web scraper
+
+All scraper settings use the `ALEJANDRIA_SCRAPER_*` prefix. See
+[`SCRAPER.md`](SCRAPER.md) for the user-facing guide.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ALEJANDRIA_SCRAPER_ENABLED` | `true` | Master switch for the scraper subsystem. Set to `false` to disable. |
+| `ALEJANDRIA_SCRAPER_OUTPUT_DIR` | `/config/scrapes` | Where downloaded pages and assembled outputs are written. |
+| `ALEJANDRIA_SCRAPER_MAX_CONCURRENT_JOBS` | `2` | Max simultaneous browser contexts. |
+| `ALEJANDRIA_SCRAPER_MAX_PAGES_PER_JOB` | `2000` | Hard cap on pages per job. |
+| `ALEJANDRIA_SCRAPER_DEFAULT_DELAY_MS` | `500` | Inter-page delay (overridable per YAML adapter). |
+| `ALEJANDRIA_SCRAPER_MAX_TOTAL_SIZE_MB` | `500` | Hard cap on total image bytes per job. |
+| `ALEJANDRIA_SCRAPER_BROWSER_HEADLESS` | `true` | Set `false` to run Chromium with a window (debug). |
+| `ALEJANDRIA_SCRAPER_ADAPTERS_FILE` | `/config/site-adapters.yaml` | YAML adapter definitions file. |
+| `ALEJANDRIA_SCRAPER_PROXY` | `""` | Optional HTTP/SOCKS5 proxy URL passed to Playwright + aiohttp. |
+| `ALEJANDRIA_SCRAPER_USER_AGENT` | Chrome 120 | Default browser user-agent. |
+| `ALEJANDRIA_SCRAPER_MAX_JOBS_PER_HOUR` | `10` | Per-user rate limit. Set to `0` or empty to disable. |
+
 ## OIDC (optional SSO)
 
 | Variable | Description |

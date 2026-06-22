@@ -6,6 +6,7 @@ from alejandria.models.progress import ReadingProgress
 from alejandria.models.highlight import Highlight
 from alejandria.models.annotation import Annotation
 from alejandria.models.shelf import Shelf, ShelfBook
+from alejandria.models.scrape_job import ScrapeJob, ScrapeJobStatus
 
 __all__ = [
     "User",
@@ -15,4 +16,6 @@ __all__ = [
     "Annotation",
     "Shelf",
     "ShelfBook",
+    "ScrapeJob",
+    "ScrapeJobStatus",
 ]
