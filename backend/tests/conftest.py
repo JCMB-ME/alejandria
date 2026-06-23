@@ -27,6 +27,15 @@ os.environ["ALEJANDRIA_SCRAPER_ADAPTERS_FILE"] = "/tmp/alejandria-test-adapters.
 
 from alejandria.db import Base, get_db
 from alejandria.models import user  # noqa: F401
+from alejandria.models import (  # noqa: F401
+    annotation,
+    highlight,
+    oidc_state,
+    progress,
+    scrape_job,
+    session,
+    shelf,
+)
 
 
 @pytest.fixture(scope="session")
