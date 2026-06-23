@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 
+from alejandria.auth.dependencies import get_current_user
+from alejandria.models.user import User
 from alejandria.services.calibre_db import get_calibre_db
 from alejandria.services.convert import convert
 
@@ -14,10 +18,11 @@ router = APIRouter()
 @router.post("/{book_id}/convert")
 async def convert_book(
     book_id: int,
+    user: Annotated[User, Depends(get_current_user)],
     target: str = Query(..., pattern=r"^(EPUB|PDF|MOBI|AZW3|TXT|HTML)$"),
     source: str | None = Query(None),
 ):
-    """Convert a book to a different format (uses Calibre's ebook-convert)."""
+    """Convert a book to a different format. Requires authentication."""
     calibre = get_calibre_db()
     if not calibre.get_book(book_id):
         raise HTTPException(status_code=404, detail="Book not found")

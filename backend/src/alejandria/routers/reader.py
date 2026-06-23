@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
+from datetime import UTC
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from alejandria.auth.dependencies import get_current_user, get_optional_user
+from alejandria.auth.dependencies import get_current_user
 from alejandria.db import get_db
 from alejandria.models.progress import ReadingProgress
 from alejandria.models.user import User
 from alejandria.schemas.progress import ProgressRead, ProgressUpdate
 from alejandria.services.calibre_db import get_calibre_db
-from alejandria.services.convert import convert, get_readable_file
+from alejandria.services.convert import get_readable_file
 
 router = APIRouter()
 
@@ -24,14 +25,15 @@ router = APIRouter()
 @router.get("/{book_id}/file/{filename}")
 async def get_readable_book(
     book_id: int,
-    user: Annotated[User | None, Depends(get_optional_user)],
+    user: Annotated[User, Depends(get_current_user)],
     fmt: str | None = Query(None, description="Preferred format (e.g. EPUB)"),
     filename: str | None = None,
 ):
     """Get the book file for reading.
 
-    Streams the file with range support (for large books).
-    Converts to browser-native format if needed (MOBI -> EPUB, etc.).
+    Requires authentication. Streams the file with range support
+    (for large books). Converts to browser-native format if needed
+    (MOBI -> EPUB, etc.).
     """
     calibre = get_calibre_db()
     if not calibre.get_book(book_id):
@@ -56,11 +58,11 @@ async def get_readable_book(
 @router.get("/{book_id}/download")
 async def download_book(
     book_id: int,
-    user: Annotated[User | None, Depends(get_optional_user)],
+    user: Annotated[User, Depends(get_current_user)],
     fmt: str | None = None,
 ):
     """Download the book in its original (or specified) format."""
-    if user is None or not user.can_download:
+    if not user.can_download:
         raise HTTPException(status_code=403, detail="Download not allowed")
 
     calibre = get_calibre_db()
@@ -108,7 +110,7 @@ async def update_progress(
     user: Annotated[User, Depends(get_current_user)],
 ) -> ProgressRead:
     """Update reading progress."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     p = db.execute(
         select(ReadingProgress).where(
@@ -117,7 +119,7 @@ async def update_progress(
         )
     ).scalar_one_or_none()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if not p:
         p = ReadingProgress(
             user_id=user.id,
