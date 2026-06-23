@@ -1,8 +1,9 @@
 <script lang="ts">
   import FilterChip from './FilterChip.svelte';
+  import FilterCheckboxList from './FilterCheckboxList.svelte';
   import { t } from '$stores/i18n';
-  import { updateFilters, clearFilters, activeFilterCount, type LibraryFiltersState } from '$stores/libraryFilters';
-  import type { FilterOptions, AuthorCount, TagCount, SeriesCount, NameCount } from '$api/types';
+  import { updateFilters, clearFilters, type LibraryFiltersState } from '$stores/libraryFilters';
+  import type { FilterOptions } from '$api/types';
 
   interface Props {
     options: FilterOptions | null;
@@ -11,82 +12,36 @@
   }
   let { options, state, mode }: Props = $props();
 
-  function lookupName(list: { name: string; id?: number }[], key: string | number, byId: boolean): string {
-    if (byId) {
-      const item = list.find((x) => (x as { id?: number }).id === Number(key));
-      return item ? (item as { name: string }).name : String(key);
-    }
-    const item = list.find((x) => x.name === String(key));
-    return item ? item.name : String(key);
+  function setAuthors(v: Array<number | string>) {
+    updateFilters({ authors: v as number[], page: 1 });
+  }
+  function setTags(v: Array<number | string>) {
+    updateFilters({ tags: v as number[], page: 1 });
+  }
+  function setSeries(v: Array<number | string>) {
+    updateFilters({ series: v as number[], page: 1 });
+  }
+  function setFormats(v: Array<number | string>) {
+    updateFilters({ formats: v as string[], page: 1 });
+  }
+  function setLanguages(v: Array<number | string>) {
+    updateFilters({ languages: v as string[], page: 1 });
   }
 
-  function toggleInArray(arr: number[] | string[], v: number | string): (number | string)[] {
-    const has = arr.includes(v as never);
-    if (has) return arr.filter((x) => x !== v);
-    return [...arr, v];
-  }
-
-  function setAuthors(v: number[]) {
-    updateFilters({ authors: v, page: 1 });
-  }
-  function setTags(v: number[]) {
-    updateFilters({ tags: v, page: 1 });
-  }
-  function setSeries(v: number[]) {
-    updateFilters({ series: v, page: 1 });
-  }
-  function setFormats(v: string[]) {
-    updateFilters({ formats: v, page: 1 });
-  }
-  function setLanguages(v: string[]) {
-    updateFilters({ languages: v, page: 1 });
-  }
-
-  const count = $derived(activeFilterCount(state));
+  // Date/search chips still need to surface in the global "active filters"
+  // section (they have no checkbox list).
+  const hasNonListFilters = $derived(
+    Boolean(state.addedAfter || state.addedBefore || state.search)
+  );
 </script>
 
 <div
   class="{mode === 'drawer' ? 'flex flex-col gap-4' : 'flex flex-col gap-4'}"
 >
-  {#if count > 0}
+  {#if hasNonListFilters}
     <div>
       <div class="text-xs text-[var(--text-muted)] mb-2">{$t('filter_active')}</div>
       <div class="flex flex-wrap gap-1.5">
-        {#each state.authors as id (id)}
-          <FilterChip
-            label={$t('filter_author')}
-            value={lookupName(options?.authors ?? [], id, true)}
-            onRemove={() => setAuthors(state.authors.filter((a) => a !== id))}
-          />
-        {/each}
-        {#each state.tags as id (id)}
-          <FilterChip
-            label={$t('filter_tag')}
-            value={lookupName(options?.tags ?? [], id, true)}
-            onRemove={() => setTags(state.tags.filter((a) => a !== id))}
-          />
-        {/each}
-        {#each state.series as id (id)}
-          <FilterChip
-            label={$t('filter_series')}
-            value={lookupName(options?.series ?? [], id, true)}
-            onRemove={() => setSeries(state.series.filter((a) => a !== id))}
-          />
-        {/each}
-        {#each state.formats as f (f)}
-          <FilterChip
-            label={$t('filter_format')}
-            value={f}
-            onRemove={() => setFormats(state.formats.filter((a) => a !== f))}
-          />
-        {/each}
-        {#each state.languages as l (l)}
-          <FilterChip
-            label={$t('filter_language')}
-            value={l}
-            onRemove={() => setLanguages(state.languages.filter((a) => a !== l))}
-          />
-        {/each}
         {#if state.addedAfter}
           <FilterChip
             label={$t('filter_added_after')}
@@ -120,115 +75,45 @@
   {/if}
 
   <div class="grid grid-cols-1 gap-3">
-    <label class="flex flex-col gap-1">
-      <span class="text-xs text-[var(--text-muted)]">{$t('filter_author')}</span>
-      <select
-        multiple
-        size="4"
-        class="input"
-        title={$t('filter_multi_hint')}
-        value={state.authors.map(String)}
-        onchange={(e) => {
-          const sel = e.currentTarget as HTMLSelectElement;
-          setAuthors(Array.from(sel.selectedOptions).map((o) => parseInt(o.value, 10)));
-        }}
-      >
-        {#each options?.authors ?? [] as opt (opt.id)}
-          <option value={opt.id}>{opt.name} ({opt.count})</option>
-        {/each}
-      </select>
-      <span class="text-[0.65rem] text-[var(--text-muted)]">
-        {$t('filter_multi_hint')}
-      </span>
-    </label>
+    <FilterCheckboxList
+      options={options?.authors ?? []}
+      selected={state.authors}
+      label={$t('filter_author')}
+      mode="byId"
+      onChange={setAuthors}
+    />
 
-    <label class="flex flex-col gap-1">
-      <span class="text-xs text-[var(--text-muted)]">{$t('filter_tag')}</span>
-      <select
-        multiple
-        size="4"
-        class="input"
-        title={$t('filter_multi_hint')}
-        value={state.tags.map(String)}
-        onchange={(e) => {
-          const sel = e.currentTarget as HTMLSelectElement;
-          setTags(Array.from(sel.selectedOptions).map((o) => parseInt(o.value, 10)));
-        }}
-      >
-        {#each options?.tags ?? [] as opt (opt.id)}
-          <option value={opt.id}>{opt.name} ({opt.count})</option>
-        {/each}
-      </select>
-      <span class="text-[0.65rem] text-[var(--text-muted)]">
-        {$t('filter_multi_hint')}
-      </span>
-    </label>
+    <FilterCheckboxList
+      options={options?.tags ?? []}
+      selected={state.tags}
+      label={$t('filter_tag')}
+      mode="byId"
+      onChange={setTags}
+    />
 
-    <label class="flex flex-col gap-1">
-      <span class="text-xs text-[var(--text-muted)]">{$t('filter_series')}</span>
-      <select
-        multiple
-        size="3"
-        class="input"
-        title={$t('filter_multi_hint')}
-        value={state.series.map(String)}
-        onchange={(e) => {
-          const sel = e.currentTarget as HTMLSelectElement;
-          setSeries(Array.from(sel.selectedOptions).map((o) => parseInt(o.value, 10)));
-        }}
-      >
-        {#each options?.series ?? [] as opt (opt.id)}
-          <option value={opt.id}>{opt.name} ({opt.count})</option>
-        {/each}
-      </select>
-      <span class="text-[0.65rem] text-[var(--text-muted)]">
-        {$t('filter_multi_hint')}
-      </span>
-    </label>
+    <FilterCheckboxList
+      options={options?.series ?? []}
+      selected={state.series}
+      label={$t('filter_series')}
+      mode="byId"
+      onChange={setSeries}
+    />
 
-    <label class="flex flex-col gap-1">
-      <span class="text-xs text-[var(--text-muted)]">{$t('filter_format')}</span>
-      <select
-        multiple
-        size="3"
-        class="input"
-        title={$t('filter_multi_hint')}
-        value={state.formats}
-        onchange={(e) => {
-          const sel = e.currentTarget as HTMLSelectElement;
-          setFormats(Array.from(sel.selectedOptions).map((o) => o.value));
-        }}
-      >
-        {#each options?.formats ?? [] as opt (opt.name)}
-          <option value={opt.name}>{opt.name} ({opt.count})</option>
-        {/each}
-      </select>
-      <span class="text-[0.65rem] text-[var(--text-muted)]">
-        {$t('filter_multi_hint')}
-      </span>
-    </label>
+    <FilterCheckboxList
+      options={options?.formats ?? []}
+      selected={state.formats}
+      label={$t('filter_format')}
+      mode="byName"
+      onChange={setFormats}
+    />
 
-    <label class="flex flex-col gap-1">
-      <span class="text-xs text-[var(--text-muted)]">{$t('filter_language')}</span>
-      <select
-        multiple
-        size="3"
-        class="input"
-        title={$t('filter_multi_hint')}
-        value={state.languages}
-        onchange={(e) => {
-          const sel = e.currentTarget as HTMLSelectElement;
-          setLanguages(Array.from(sel.selectedOptions).map((o) => o.value));
-        }}
-      >
-        {#each options?.languages ?? [] as opt (opt.name)}
-          <option value={opt.name}>{opt.name} ({opt.count})</option>
-        {/each}
-      </select>
-      <span class="text-[0.65rem] text-[var(--text-muted)]">
-        {$t('filter_multi_hint')}
-      </span>
-    </label>
+    <FilterCheckboxList
+      options={options?.languages ?? []}
+      selected={state.languages}
+      label={$t('filter_language')}
+      mode="byName"
+      onChange={setLanguages}
+    />
 
     <div class="grid grid-cols-2 gap-2">
       <label class="flex flex-col gap-1">

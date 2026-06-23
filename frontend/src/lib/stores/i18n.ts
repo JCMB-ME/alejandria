@@ -262,6 +262,9 @@ export const translations = {
     filter_drawer_title: 'Filters',
     filter_open_drawer: 'Filters',
     filter_active: 'Active filters',
+    filter_active_label: 'Active filters:',
+    filter_remove: 'Remove',
+    filter_empty: 'No options',
     filter_no_options: 'No options',
     filter_clear: 'Clear',
     // Multi-select
@@ -548,6 +551,9 @@ export const translations = {
     filter_drawer_title: 'Filtros',
     filter_open_drawer: 'Filtros',
     filter_active: 'Filtros activos',
+    filter_active_label: 'Filtros activos:',
+    filter_remove: 'Quitar',
+    filter_empty: 'Sin opciones',
     filter_no_options: 'Sin opciones',
     filter_clear: 'Borrar',
     // Selección múltiple
