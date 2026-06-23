@@ -226,6 +226,7 @@ export const highlights = {
     text: string;
     color?: string;
     style?: string;
+    note?: string | null;
     chapter?: string;
     page?: number;
   }) => api.post<Types.Highlight>('/api/highlights', data),

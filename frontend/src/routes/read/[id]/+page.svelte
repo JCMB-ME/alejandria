@@ -426,31 +426,48 @@
     // Re-add
     highlights.forEach((h) => {
       try {
-        rendition.annotations.add('highlight', h.cfi, {}, null, 'alejandria-highlight', {
-          fill: highlightColor(h.color),
-        });
+        rendition.annotations.add(
+          'highlight',
+          h.cfi,
+          {},
+          null,
+          'alejandria-highlight',
+          { fill: hexToRgba(h.color), 'data-color': h.color },
+        );
       } catch {}
     });
   }
 
-  function highlightColor(name: string) {
-    return {
-      yellow: 'rgba(255, 213, 79, 0.4)',
-      green: 'rgba(129, 199, 132, 0.4)',
-      blue: 'rgba(100, 181, 246, 0.4)',
-      pink: 'rgba(244, 143, 177, 0.4)',
-      orange: 'rgba(255, 171, 64, 0.4)',
-    }[name] || 'rgba(255, 213, 79, 0.4)';
+  /**
+   * Plan 3 / H6: convert a #RRGGBB hex string into the rgba string the
+   * EPUB.js annotation API expects as the `fill`. Falls back to the
+   * default yellow when the input doesn't match a 6-digit hex (a stale
+   * legacy "yellow" string, for example — the migration translates the
+   * common ones but this guard keeps the renderer from crashing).
+   */
+  function hexToRgba(hex: string): string {
+    const m = /^#([0-9A-Fa-f]{6})$/.exec(hex);
+    if (!m) return 'rgba(255, 213, 79, 0.4)';
+    const n = parseInt(m[1], 16);
+    const r = (n >> 16) & 0xff;
+    const g = (n >> 8) & 0xff;
+    const b = n & 0xff;
+    return `rgba(${r}, ${g}, ${b}, 0.4)`;
   }
 
   function showHighlightMenu(contents: any, cfiRange: string) {
     // Inject a small floating menu
-    rendition.annotations.add('highlight', cfiRange, {}, null, 'alejandria-highlight', {
-      fill: highlightColor('yellow'),
-    });
+    rendition.annotations.add(
+      'highlight',
+      cfiRange,
+      {},
+      null,
+      'alejandria-highlight',
+      { fill: hexToRgba('#FFEB3B') },
+    );
   }
 
-  async function saveHighlight(color = 'yellow') {
+  async function saveHighlight(color = '#FFEB3B') {
     if (!selectedCfi || !selectedText || !book) return;
     try {
       // Feature 3a: for PDF/CBZ we record the current 1-based page

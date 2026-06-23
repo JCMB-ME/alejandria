@@ -162,6 +162,13 @@ export const translations = {
     delete_highlight_failed: 'Could not delete highlight. Please try again.',
     highlight_on_page: 'p. {n}',
     jump_locations_failed: 'Could not generate page index. Jump-to-page is disabled for this book.',
+    // Plan 3 / Highlights Complete (H4, H5, H8)
+    highlight_note_placeholder: 'Add a note...',
+    highlight_color_label: 'Color',
+    highlight_export_btn: 'Export',
+    highlight_export_per_book: 'Download as Markdown',
+    highlight_export_all: 'Download all my highlights',
+    highlight_export_done: 'Highlights exported',
     // Login
     sign_in: 'Sign in',
     username: 'Username',
@@ -440,6 +447,13 @@ export const translations = {
     delete_highlight_failed: 'No se pudo eliminar el resaltado. Inténtalo de nuevo.',
     highlight_on_page: 'pág. {n}',
     jump_locations_failed: 'No se pudo generar el índice de páginas. El salto a página está desactivado para este libro.',
+    // Plan 3 / Highlights Complete (H4, H5, H8)
+    highlight_note_placeholder: 'Añade una nota...',
+    highlight_color_label: 'Color',
+    highlight_export_btn: 'Exportar',
+    highlight_export_per_book: 'Descargar como Markdown',
+    highlight_export_all: 'Descargar todos mis resaltados',
+    highlight_export_done: 'Resaltados exportados',
     // Login
     sign_in: 'Iniciar sesión',
     username: 'Usuario',

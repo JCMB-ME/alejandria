@@ -279,10 +279,25 @@ mark.alejandria-highlight {
   background: rgba(255, 213, 79, 0.2);
 }
 
-mark.alejandria-highlight[data-color='green'] { background: rgba(129, 199, 132, 0.4); }
-mark.alejandria-highlight[data-color='blue']  { background: rgba(100, 181, 246, 0.4); }
-mark.alejandria-highlight[data-color='pink']  { background: rgba(244, 143, 177, 0.4); }
-mark.alejandria-highlight[data-color='orange']{ background: rgba(255, 171, 64, 0.4); }
+/*
+  Plan 3 / H6: hex selectors (post-H2). The validator in the schema
+  upper-cases every stored color, so all attribute values here are
+  uppercase. The legacy named-color selectors below stay as a safety
+  net for any row whose color didn't get migrated.
+*/
+mark.alejandria-highlight[data-color='#FFEB3B'] { background: rgba(255, 235, 59, 0.4); }
+mark.alejandria-highlight[data-color='#81C784'] { background: rgba(129, 199, 132, 0.4); }
+mark.alejandria-highlight[data-color='#64B5F6'] { background: rgba(100, 181, 246, 0.4); }
+mark.alejandria-highlight[data-color='#F48FB1'] { background: rgba(244, 143, 177, 0.4); }
+mark.alejandria-highlight[data-color='#B39DDB'] { background: rgba(179, 157, 219, 0.4); }
+
+/* Legacy named-color fallback (post-migration should be empty, but
+   keep this so a stale row still renders). */
+mark.alejandria-highlight[data-color='yellow'] { background: rgba(255, 235, 59, 0.4); }
+mark.alejandria-highlight[data-color='green']  { background: rgba(129, 199, 132, 0.4); }
+mark.alejandria-highlight[data-color='blue']   { background: rgba(100, 181, 246, 0.4); }
+mark.alejandria-highlight[data-color='pink']   { background: rgba(244, 143, 177, 0.4); }
+mark.alejandria-highlight[data-color='orange'] { background: rgba(255, 171, 64, 0.4); }
 
 /* Ensure external SVG icons loaded via img tags are visible in dark mode by inverting black to light/white */
 [data-theme='dark'] img[src*="/icons/"] {

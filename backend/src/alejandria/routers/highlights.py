@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from alejandria.auth.dependencies import get_current_user
 from alejandria.db import get_db
+from alejandria.models.highlight import Highlight
 from alejandria.models.user import User
 from alejandria.schemas.highlight import (
     AnnotationCreate,
@@ -50,11 +52,20 @@ async def update_highlight(
     payload: HighlightUpdate,
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
-):
-    h = service.update_highlight(db, user.id, highlight_id, payload)
-    if not h:
+) -> Highlight:
+    """PATCH a highlight.
+
+    Returns 403 when the highlight exists but belongs to another user
+    (audit's H4 finding — was previously indistinguishable from 404).
+    Returns 404 when the highlight doesn't exist. Returns 422 when
+    `color` is not a #RRGGBB hex string (handled by Pydantic).
+    """
+    try:
+        return service.update_highlight(db, user, highlight_id, payload)
+    except LookupError:
         raise HTTPException(status_code=404, detail="Highlight not found")
-    return h
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Not your highlight")
 
 
 @router.delete("/{highlight_id}", status_code=204)
@@ -63,8 +74,12 @@ async def delete_highlight(
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ):
-    if not service.delete_highlight(db, user.id, highlight_id):
+    try:
+        service.delete_highlight(db, user, highlight_id)
+    except LookupError:
         raise HTTPException(status_code=404, detail="Highlight not found")
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Not your highlight")
 
 
 @router.get("/export")
@@ -74,14 +89,42 @@ async def export_highlights(
     db: Annotated[Session, Depends(get_db)] = None,
     user: Annotated[User, Depends(get_current_user)] = None,
 ) -> Response:
-    """Export highlights as Markdown / Notion / Obsidian compatible format."""
+    """Export highlights as Markdown.
+
+    - `book_id` present → single markdown file with the book title as H1.
+    - `book_id` absent → zip with one `.md` per book the user has highlights in.
+
+    Only markdown is supported for now. Other formats return 400.
+    """
     if format != "markdown":
-        raise HTTPException(status_code=400, detail="Only 'markdown' format supported currently")
-    md = service.export_markdown(db, user.id, book_id=book_id)
+        raise HTTPException(
+            status_code=400,
+            detail="Only 'markdown' format supported currently",
+        )
+
+    if book_id is not None:
+        try:
+            md = service.export_markdown(db, user.id, book_id=book_id)
+        except LookupError:
+            raise HTTPException(status_code=404, detail="Book not found")
+        return Response(
+            content=md,
+            media_type="text/markdown",
+            headers={
+                "Content-Disposition": 'attachment; filename="highlights.md"'
+            },
+        )
+
+    blob = service.export_markdown_zip(db, user.id)
+    today = date.today().isoformat()
     return Response(
-        content=md,
-        media_type="text/markdown",
-        headers={"Content-Disposition": 'attachment; filename="highlights.md"'},
+        content=blob,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="highlights-{today}.zip"'
+            )
+        },
     )
 
 

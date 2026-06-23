@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# Hex color regex — Pydantic v2 style. Only #RRGGBB is accepted.
+# The validator upper-cases the result so stored colors are always
+# canonical, which matches the CSS attribute selectors in app.css.
+_HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
 class HighlightBase(BaseModel):
@@ -12,10 +18,19 @@ class HighlightBase(BaseModel):
 
     cfi: str
     text: str = Field(max_length=8192)
-    color: str = "yellow"
+    color: str = "#FFEB3B"
     style: str = "highlight"
+    note: str | None = None
     chapter: str | None = None
     page: int | None = None
+
+    @field_validator("color")
+    @classmethod
+    def _validate_color(cls, v: str) -> str:
+        """Accept only #RRGGBB hex values (case-insensitive)."""
+        if not _HEX.match(v):
+            raise ValueError("color must be a #RRGGBB hex string")
+        return v.upper()
 
 
 class HighlightCreate(HighlightBase):
@@ -25,11 +40,26 @@ class HighlightCreate(HighlightBase):
 
 
 class HighlightUpdate(BaseModel):
-    """Update highlight payload."""
+    """Update highlight payload.
+
+    All fields optional — Pydantic's `exclude_unset` on the service side
+    means only set fields get written to the row. `color` runs through
+    the same hex validator as the create path when supplied.
+    """
 
     color: str | None = None
     style: str | None = None
     text: str | None = Field(default=None, max_length=8192)
+    note: str | None = None
+
+    @field_validator("color")
+    @classmethod
+    def _validate_color(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not _HEX.match(v):
+            raise ValueError("color must be a #RRGGBB hex string")
+        return v.upper()
 
 
 class HighlightRead(HighlightBase):

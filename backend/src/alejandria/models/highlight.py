@@ -25,9 +25,17 @@ class Highlight(Base):
     cfi: Mapped[str] = mapped_column(String(512), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # Color / style
-    color: Mapped[str] = mapped_column(String(16), default="yellow", nullable=False)
+    # Color / style. The column is String(7) to enforce a "#RRGGBB"
+    # hex format — legacy named tokens (yellow/green/blue/pink/orange)
+    # are translated to hex in the migration that introduces this column.
+    color: Mapped[str] = mapped_column(String(7), default="#FFEB3B", nullable=False)
     style: Mapped[str] = mapped_column(String(32), default="highlight", nullable=False)  # highlight|underline|note
+
+    # Free-text note attached by the user. Null when the user has not
+    # written anything. UI handles null gracefully (textarea shows the
+    # placeholder and saves an empty string on blur only when the user
+    # actually typed something).
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Chapter context
     chapter: Mapped[str | None] = mapped_column(String(512), nullable=True)

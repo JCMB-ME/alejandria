@@ -1,8 +1,11 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
+  import { page } from '$app/stores';
   import type { BookDetail, Highlight } from '$api/types';
   import { readerTheme } from '$stores/auth';
   import { t } from '$stores/i18n';
+  import { toast } from '$stores/toast';
+  import HighlightItem from './HighlightItem.svelte';
 
   interface Props {
     book: BookDetail | null;
@@ -61,11 +64,45 @@
 
   const dispatch = createEventDispatcher();
 
+  // Plan 3 / H8: Export modal state. Hidden by default; toggled by the
+  // export button in the highlights drawer header.
+  let showExportModal = $state(false);
+
   // Drawer chrome on the right. We use 85vw on phones (so the page edge
   // is still visible behind) and clamp to 320px on larger screens. The
   // mobile TOC trigger is in row 1 of the toolbar so the user can open
   // chapters without scrolling the controls bar first.
   const themeButtons = ['light', 'sepia', 'dark'] as const;
+
+  /**
+   * Plan 3 / H8: download highlights as either a per-book markdown file
+   * or a per-user zip. The endpoint at `/api/highlights/export` picks the
+   * right shape based on whether `book_id` is present.
+   */
+  async function exportHighlights(mode: 'per_book' | 'all') {
+    showExportModal = false;
+    const url = mode === 'per_book'
+      ? `/api/highlights/export?format=markdown&book_id=${$page.params.id}`
+      : `/api/highlights/export?format=markdown`;
+    try {
+      const r = await fetch(url, { credentials: 'same-origin' });
+      if (!r.ok) throw new Error(`export failed: ${r.status}`);
+      const blob = await r.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = mode === 'per_book'
+        ? 'highlights.md'
+        : `highlights-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      toast.success($t('highlight_export_done'));
+    } catch {
+      toast.error('Export failed');
+    }
+  }
 </script>
 
 <header class="border-b shrink-0" style="background: var(--surface); border-color: var(--border);">
@@ -326,63 +363,91 @@
   >
     <div class="flex items-center justify-between mb-3 gap-2">
       <h3 class="font-semibold text-sm">{$t('highlights')} ({highlights.length})</h3>
-      <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => dispatch('toggleHighlights')} aria-label={$t('close')}>
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="space-y-3 text-sm">
-      {#each highlights as h}
-        <!--
-          Feature 3b + 2: each highlight is a clickable row that jumps
-          back to the highlight's location. The trash button (Feature 2)
-          is rendered separately from the clickable area so the row
-          click doesn't fire when deleting. `e.stopPropagation()` on
-          the trash onclick is a belt-and-braces safety: the trash
-          button is OUTSIDE the clickable button element, so DOM
-          bubbling already prevents the row click — but we keep the
-          guard in case the layout changes.
-          Feature 3c: for PDF/CBZ we also show `p. N` / `pág. N` next
-          to the text. EPUB gets no fake page number; the virtual-page
-          index isn't wired to highlight creation yet.
-        -->
-        <div class="flex items-start gap-2">
+      <div class="flex items-center gap-1">
+        {#if highlights.length}
+          <!--
+            Plan 3 / H8: Export button. Hidden until there's at least
+            one highlight (no point exporting an empty list).
+          -->
           <button
             type="button"
-            class="flex-1 min-w-0 text-left rounded p-2 hover:bg-[var(--elevated)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-            aria-label={`Jump to highlight: ${h.text.slice(0, 40)}`}
-            onclick={() => onJumpToHighlight?.(h)}
-          >
-            <div class="flex items-baseline gap-2">
-              <blockquote class="border-l-2 pl-2 italic flex-1 min-w-0" style="border-color: var(--accent);">
-                {h.text}
-              </blockquote>
-              {#if (bookFormatType === 'pdf' || bookFormatType === 'cbz') && h.page != null}
-                <span class="text-[10px] text-[var(--text-muted)] whitespace-nowrap shrink-0">
-                  {$t('highlight_on_page', { n: h.page })}
-                </span>
-              {/if}
-            </div>
-          </button>
-          <button
-            type="button"
-            class="btn btn-ghost !p-1.5 shrink-0 text-[var(--text-soft)] hover:text-[var(--danger)]"
-            aria-label={$t('delete_highlight')}
-            title={$t('delete_highlight')}
-            onclick={(e) => { e.stopPropagation(); onDeleteHighlight?.(h.id); }}
+            class="btn btn-ghost !p-1.5 touch-target shrink-0"
+            title={$t('highlight_export_btn')}
+            aria-label={$t('highlight_export_btn')}
+            onclick={() => (showExportModal = true)}
           >
             <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/>
-              <path d="M10 11v6"/>
-              <path d="M14 11v6"/>
-              <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
           </button>
-        </div>
+        {/if}
+        <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => dispatch('toggleHighlights')} aria-label={$t('close')}>
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="space-y-3 text-sm">
+      {#each highlights as h (h.id)}
+        <!--
+          Plan 3 / H4 + H5: each highlight is now a <HighlightItem>
+          component so the note input + color picker state stays local
+          to each row. The parent keeps ownership of the highlights
+          array and is updated by the save / color callbacks below.
+        -->
+        <HighlightItem
+          highlight={h}
+          {bookFormatType}
+          onJump={(item) => onJumpToHighlight?.(item)}
+          onDelete={(id) => onDeleteHighlight?.(id)}
+        />
       {:else}
         <p class="text-[var(--text-muted)] text-xs">{$t('select_text_to_highlight')}</p>
       {/each}
     </div>
+    <!--
+      Plan 3 / H8: Export modal. Two buttons: per-book markdown or
+      zip of every highlighted book. Closes on scrim tap via the
+      `e.target === e.currentTarget` guard.
+    -->
+    {#if showExportModal}
+      <div
+        class="fixed inset-0 z-20 flex items-center justify-center p-4"
+        style="background: rgba(0,0,0,0.5);"
+        role="dialog"
+        aria-modal="true"
+        aria-label={$t('highlight_export_btn')}
+        onclick={(e) => { if (e.target === e.currentTarget) showExportModal = false; }}
+      >
+        <div
+          class="card max-w-sm w-full p-4"
+          style="background: var(--surface);"
+        >
+          <h3 class="font-semibold text-sm mb-3">{$t('highlight_export_btn')}</h3>
+          <div class="flex flex-col gap-2">
+            <button
+              class="btn btn-secondary w-full"
+              onclick={() => exportHighlights('per_book')}
+            >
+              {$t('highlight_export_per_book')}
+            </button>
+            <button
+              class="btn btn-secondary w-full"
+              onclick={() => exportHighlights('all')}
+            >
+              {$t('highlight_export_all')}
+            </button>
+            <button
+              class="btn btn-ghost w-full"
+              onclick={() => (showExportModal = false)}
+            >
+              {$t('cancel_btn')}
+            </button>
+          </div>
+        </div>
+      </div>
+    {/if}
   </aside>
 {/if}
 

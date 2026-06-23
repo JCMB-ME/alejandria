@@ -149,8 +149,15 @@ export interface Highlight {
   book_id: number;
   cfi: string;
   text: string;
+  /**
+   * Hex color in #RRGGBB form (post Plan 3 / H2). Legacy named tokens
+   * ("yellow", "green", …) are translated to hex by the Alembic
+   * migration that introduced the note column.
+   */
   color: string;
   style: string;
+  /** Plan 3 / H1: free-text note attached by the user. */
+  note: string | null;
   chapter: string | null;
   page: number | null;
   created_at: string;
