@@ -216,7 +216,39 @@ def create_app() -> FastAPI:
                 return FileResponse(sw, media_type="application/javascript")
             return HTMLResponse(status_code=404)
 
-        # SPA fallback — serve index.html for any non-API route
+        # SPA fallback — serve index.html for any non-API route.
+        # index.html must NEVER be cached: it references hashed asset filenames
+        # (e.g. _app/immutable/nodes/4.AAAA.js) and a stale index points at
+        # chunks the browser no longer requests. The hashed chunks themselves
+        # are safe to cache forever.
+        @app.get("/", include_in_schema=False)
+        async def index_no_cache():
+            index = static_path / "index.html"
+            if index.exists():
+                return FileResponse(
+                    index,
+                    media_type="text/html",
+                    headers={"Cache-Control": "no-store, must-revalidate",
+                             "Pragma": "no-cache"},
+                )
+            return HTMLResponse(
+                "<h1>Alejandría backend is running</h1>"
+                "<p>Frontend not built. Run <code>npm run build</code> in <code>frontend/</code>.</p>",
+                status_code=200,
+            )
+
+        @app.get("/_app/version.json", include_in_schema=False)
+        async def version_no_cache():
+            v = static_path / "_app" / "version.json"
+            if v.exists():
+                return FileResponse(
+                    v,
+                    media_type="application/json",
+                    headers={"Cache-Control": "no-store, must-revalidate",
+                             "Pragma": "no-cache"},
+                )
+            return HTMLResponse(status_code=404)
+
         @app.get("/{full_path:path}", include_in_schema=False)
         async def spa_fallback(full_path: str):
             # Don't shadow API routes (already mounted)
@@ -225,7 +257,12 @@ def create_app() -> FastAPI:
                 return HTMLResponse(status_code=404)
             index = static_path / "index.html"
             if index.exists():
-                return FileResponse(index, media_type="text/html")
+                return FileResponse(
+                    index,
+                    media_type="text/html",
+                    headers={"Cache-Control": "no-store, must-revalidate",
+                             "Pragma": "no-cache"},
+                )
             return HTMLResponse(
                 "<h1>Alejandría backend is running</h1>"
                 "<p>Frontend not built. Run <code>npm run build</code> in <code>frontend/</code>.</p>",
