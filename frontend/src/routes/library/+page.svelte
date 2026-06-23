@@ -97,11 +97,12 @@
   onMount(() => {
     initLibraryFiltersBinding();
     initLibrarySelectionBinding();
-    // Load filter options once (cached on backend with ETag)
+    // Load filter options once.
     libraryApi.filters().then((opts) => {
       filterOptions = opts;
-    }).catch(() => {
-      // non-fatal: filters UI shows empty
+    }).catch((err: unknown) => {
+      const e = err as { detail?: string; message?: string };
+      toast.error(e?.detail ?? e?.message ?? 'Failed to load filters');
     });
   });
 

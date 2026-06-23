@@ -16,6 +16,11 @@ const API_BASE = '';
 // client treats that as "not modified" (callers re-fetch on next call).
 const _etagCache = new Map<string, string>();
 
+// Paths that opt OUT of ETag caching. `/api/library/filters` is small,
+// called once on mount, and has no client-side body cache — a 304 here
+// would empty the filter selects. Other endpoints keep the optimization.
+const NO_ETAG_PATHS = new Set<string>(['/api/library/filters']);
+
 export class APIError extends Error {
   status: number;
   detail: string;
@@ -40,7 +45,7 @@ async function request<T>(
   }
 
   // Re-send the cached ETag for GETs that opt into caching.
-  if (method === 'GET' && _etagCache.has(path)) {
+  if (method === 'GET' && !NO_ETAG_PATHS.has(path) && _etagCache.has(path)) {
     headers['If-None-Match'] = _etagCache.get(path)!;
   }
 
@@ -60,7 +65,7 @@ async function request<T>(
   });
 
   // Cache ETag on successful responses (200 + has ETag header).
-  if (method === 'GET') {
+  if (method === 'GET' && !NO_ETAG_PATHS.has(path)) {
     const etag = res.headers.get('etag');
     if (res.status === 200 && etag) {
       _etagCache.set(path, etag);
@@ -82,7 +87,7 @@ async function request<T>(
   // We don't store the body itself (Phase C scope), so callers will
   // re-fetch on next call. Throw a sentinel APIError so callers can
   // branch on status 304.
-  if (res.status === 304) {
+  if (res.status === 304 && !NO_ETAG_PATHS.has(path)) {
     throw new APIError(304, 'Not modified');
   }
 
