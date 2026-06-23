@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from asyncio import Semaphore
 from pathlib import Path
 
 from alejandria.config import get_settings
@@ -44,6 +45,20 @@ def converted_cache_path(book_id: int, target_fmt: str) -> Path:
     return settings.caches_path / "conversions" / str(book_id) / f"book.{target_fmt.lower()}"
 
 
+# Module-level semaphore — created lazily because asyncio.Semaphore()
+# must be created inside a running event loop. The first call to convert()
+# binds it.
+_sem: Semaphore | None = None
+
+
+def _semaphore() -> Semaphore:
+    """Return the module-level conversion semaphore, creating it on first use."""
+    global _sem
+    if _sem is None:
+        _sem = Semaphore(get_settings().convert_max_concurrent)
+    return _sem
+
+
 async def convert(
     book_id: int,
     source_fmt: str,
@@ -54,6 +69,10 @@ async def convert(
     """Convert a book to a target format using Calibre's ebook-convert.
 
     Returns path to converted file, or None on failure.
+
+    Bounded by an asyncio.Semaphore sized at
+    ``ALEJANDRIA_CONVERT_MAX_CONCURRENT`` (default 2) so a flood of
+    requests cannot fork N concurrent ebook-convert processes.
     """
     if not get_settings().enable_calibre:
         logger.warning("conversion_disabled")
@@ -64,6 +83,17 @@ async def convert(
     if cache.exists() and not force:
         return cache
 
+    async with _semaphore():
+        return await _convert_locked(book_id, source_fmt, target, cache)
+
+
+async def _convert_locked(
+    book_id: int,
+    source_fmt: str,
+    target: str,
+    cache: Path,
+) -> Path | None:
+    """Inner convert body — runs under the semaphore."""
     calibre = get_calibre_db()
     src = calibre.get_format_path(book_id, source_fmt)
     if not src or not src.exists():

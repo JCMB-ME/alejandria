@@ -28,3 +28,21 @@ services:
       - PGID=${PGID:-1000}
       - TZ=${TZ:-UTC}
       - DEV_MODE=true
+    # Looser dev limits — Vite HMR + uvicorn reload can spike CPU on first start.
+    mem_limit: 1g
+    cpus: '2.0'
+    pids_limit: 512
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

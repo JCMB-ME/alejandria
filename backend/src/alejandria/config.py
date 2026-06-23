@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     # Misc
     timezone: str = "UTC"
 
+    # Conversion cap
+    convert_max_concurrent: int = 2  # ALEJANDRIA_CONVERT_MAX_CONCURRENT
+
     # Web scraper
     scraper_enabled: bool = True
     scraper_output_dir: Path = Path("/config/scrapes")
