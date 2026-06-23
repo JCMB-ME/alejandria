@@ -80,11 +80,39 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     data = payload.model_dump(exclude_unset=True)
+
+    # Detect security-sensitive changes so we can kill sessions after.
+    kills_sessions = False
+    if "is_active" in data and data["is_active"] is False:
+        kills_sessions = True
+    if "role" in data and data["role"] != user.role:
+        kills_sessions = True
+    if "password" in data and data["password"]:
+        kills_sessions = True
+
     for k, v in data.items():
         if k == "password" and v:
             user.password_hash = hash_password(v)
         else:
             setattr(user, k, v)
+
+    if kills_sessions:
+        # Audit log: who was demoted/disabled. Phase E adds a structured
+        # AuditLog table; for now, log via structlog so it lands in stdout.
+        from alejandria.utils.log import get_logger
+        logger = get_logger(__name__)
+        logger.warning(
+            "user_mutated_sessions_revoked",
+            target_user_id=user.id,
+            actor_user_id=admin.id,
+            changes={k: v for k, v in data.items() if k in {"is_active", "role", "password"}},
+        )
+        # Delete all sessions for the affected user.
+        from alejandria.models.session import UserSession
+        db.execute(
+            UserSession.__table__.delete().where(UserSession.user_id == user.id)
+        )
+
     db.commit()
     db.refresh(user)
     return user

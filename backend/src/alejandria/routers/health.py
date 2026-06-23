@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+import os
+import shutil
+
+from fastapi import APIRouter, Response, status
 from sqlalchemy import text
 
 from alejandria import __version__
@@ -15,7 +18,11 @@ router = APIRouter()
 
 @router.get("/health")
 async def health() -> dict:
-    """Basic health check."""
+    """Liveness probe: returns 200 if the process is alive.
+
+    Use this for orchestrators that need to distinguish a dead process
+    from a degraded one (k8s `livenessProbe`, Docker `HEALTHCHECK`).
+    """
     return {
         "status": "ok",
         "version": __version__,
@@ -24,8 +31,13 @@ async def health() -> dict:
 
 
 @router.get("/health/ready")
-async def readiness() -> dict:
-    """Readiness check: verifies DB and library are accessible."""
+async def readiness(response: Response) -> dict:
+    """Readiness probe: verifies DB, Calibre, and scanner are functional.
+
+    Returns 503 if any check fails so Docker / k8s can take the container
+    out of rotation. Use this for orchestrators that route traffic
+    (k8s `readinessProbe`, Docker Compose `healthcheck.test`).
+    """
     settings = get_settings()
     checks: dict[str, dict] = {}
 
@@ -51,22 +63,37 @@ async def readiness() -> dict:
     except Exception as e:
         checks["calibre_db"] = {"status": "error", "error": str(e)}
 
+    # Scanner (best-effort — the scanner is not started in some test fixtures)
+    try:
+        from alejandria.services.scanner import get_scanner
+        scanner = get_scanner()
+        checks["scanner"] = {
+            "status": "ok" if scanner._observer is not None else "not_running",
+            "last_scan": scanner.last_scan.isoformat() if scanner.last_scan else None,
+        }
+    except Exception as e:
+        checks["scanner"] = {"status": "error", "error": str(e)}
+
     # Calibre CLI
     if settings.enable_calibre:
-        import shutil
         calibre_bin = shutil.which("ebook-convert") or "/opt/calibre/ebook-convert"
-        import os
         if os.path.exists(calibre_bin):
             checks["calibre_cli"] = {"status": "ok", "path": calibre_bin}
         else:
-            checks["calibre_cli"] = {
-                "status": "error",
-                "message": "Calibre CLI not found",
-            }
+            checks["calibre_cli"] = {"status": "error", "message": "Calibre CLI not found"}
 
-    all_ok = all(c.get("status") == "ok" for c in checks.values())
+    # 503 if any check is in error status. Warnings (no library yet) are OK.
+    has_error = any(c.get("status") == "error" for c in checks.values())
+    if has_error:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return {
+            "status": "degraded",
+            "version": __version__,
+            "checks": checks,
+        }
+
     return {
-        "status": "ok" if all_ok else "degraded",
+        "status": "ok",
         "version": __version__,
         "checks": checks,
     }

@@ -80,3 +80,41 @@ class OIDCClient:
     def generate_state() -> str:
         """Generate a random state parameter for CSRF protection."""
         return secrets.token_urlsafe(32)
+
+    async def persist_state(self, state: str, redirect_uri: str | None = None) -> None:
+        """Persist a freshly-generated state to the DB.
+
+        Phase B adds this method; Phase E's full callback handler will
+        consume it. For now, the row sits in `oidc_states` until the
+        `cleanup_expired_states` job (started in lifespan) reaps it
+        after 10 minutes.
+        """
+        from alejandria.db import SessionLocal
+        from alejandria.models.oidc_state import OIDCState
+
+        with SessionLocal() as db:
+            db.add(OIDCState(state=state, redirect_uri=redirect_uri))
+            db.commit()
+
+    @staticmethod
+    async def consume_state(state: str) -> bool:
+        """Mark a state as consumed. Returns True if the row existed.
+
+        Used by the OIDC callback (Phase E) to verify the state parameter
+        before exchanging the code. Phase B includes this so the helper is
+        testable; Phase E will wire it to the callback route.
+        """
+        from datetime import UTC, datetime
+        from sqlalchemy import select
+        from alejandria.db import SessionLocal
+        from alejandria.models.oidc_state import OIDCState
+
+        with SessionLocal() as db:
+            row = db.execute(
+                select(OIDCState).where(OIDCState.state == state)
+            ).scalar_one_or_none()
+            if row is None or row.consumed_at is not None:
+                return False
+            row.consumed_at = datetime.now(UTC)
+            db.commit()
+            return True
