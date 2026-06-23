@@ -55,6 +55,12 @@ library/
 covers/
 config/
 
+# Whitelist: the frontend's library components folder (NOT user library data)
+!/frontend/src/lib/components/library/
+!/frontend/src/lib/components/library/**
+!/frontend/src/routes/library/
+!/frontend/src/routes/library/**
+
 # Backup output (created by scripts/backup.sh)
 /backups/
 
