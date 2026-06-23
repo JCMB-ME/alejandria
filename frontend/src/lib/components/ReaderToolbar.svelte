@@ -365,12 +365,12 @@
           </button>
           <button
             type="button"
-            class="btn btn-ghost !p-1.5 shrink-0 text-[var(--text-muted)] hover:text-[var(--danger)]"
+            class="btn btn-ghost !p-1.5 shrink-0 text-[var(--text-soft)] hover:text-[var(--danger)]"
             aria-label={$t('delete_highlight')}
             title={$t('delete_highlight')}
             onclick={(e) => { e.stopPropagation(); onDeleteHighlight?.(h.id); }}
           >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/>
               <path d="M10 11v6"/>

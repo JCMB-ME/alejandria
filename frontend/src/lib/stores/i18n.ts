@@ -155,6 +155,7 @@ export const translations = {
     jump_btn: 'Go',
     delete_highlight: 'Delete highlight',
     delete_highlight_confirm: 'Delete this highlight?',
+    delete_highlight_failed: 'Could not delete highlight. Please try again.',
     highlight_on_page: 'p. {n}',
     jump_locations_failed: 'Could not generate page index. Jump-to-page is disabled for this book.',
     // Login
@@ -379,6 +380,7 @@ export const translations = {
     jump_btn: 'Ir',
     delete_highlight: 'Eliminar resaltado',
     delete_highlight_confirm: '¿Eliminar este resaltado?',
+    delete_highlight_failed: 'No se pudo eliminar el resaltado. Inténtalo de nuevo.',
     highlight_on_page: 'pág. {n}',
     jump_locations_failed: 'No se pudo generar el índice de páginas. El salto a página está desactivado para este libro.',
     // Login

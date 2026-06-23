@@ -773,7 +773,7 @@
       }
     } catch (e) {
       console.error('deleteHighlight_failed', e);
-      toast.error('Could not delete highlight');
+      toast.error($t('delete_highlight_failed') ?? 'Could not delete highlight');
     }
   }
 
