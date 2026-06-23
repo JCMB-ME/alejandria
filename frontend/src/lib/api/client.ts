@@ -90,7 +90,29 @@ async function request<T>(
     let detail = res.statusText;
     try {
       const data = await res.json();
-      detail = data.detail || detail;
+      // FastAPI validation errors (422) put an array of objects in
+      // `data.detail`; anything that stringifies it (e.g. toast.error(detail))
+      // would render as "[object Object]". Normalize to a readable string.
+      detail =
+        typeof data.detail === 'string'
+          ? data.detail || detail
+          : Array.isArray(data.detail)
+            ? data.detail
+                .map((d: unknown) => {
+                  if (d && typeof d === 'object') {
+                    const obj = d as { msg?: unknown; loc?: unknown };
+                    const loc = Array.isArray(obj.loc)
+                      ? obj.loc
+                          .filter((p) => p !== 'body')
+                          .map(String)
+                          .join('.')
+                      : '';
+                    return loc ? `${loc}: ${String(obj.msg ?? JSON.stringify(d))}` : String(obj.msg ?? JSON.stringify(d));
+                  }
+                  return String(d);
+                })
+                .join('; ')
+            : detail;
     } catch {}
     throw new APIError(res.status, detail);
   }

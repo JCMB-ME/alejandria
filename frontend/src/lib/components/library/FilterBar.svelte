@@ -126,6 +126,7 @@
         multiple
         size="4"
         class="input"
+        title={$t('filter_multi_hint')}
         value={state.authors.map(String)}
         onchange={(e) => {
           const sel = e.currentTarget as HTMLSelectElement;
@@ -136,6 +137,9 @@
           <option value={opt.id}>{opt.name} ({opt.count})</option>
         {/each}
       </select>
+      <span class="text-[0.65rem] text-[var(--text-muted)]">
+        {$t('filter_multi_hint')}
+      </span>
     </label>
 
     <label class="flex flex-col gap-1">
@@ -144,6 +148,7 @@
         multiple
         size="4"
         class="input"
+        title={$t('filter_multi_hint')}
         value={state.tags.map(String)}
         onchange={(e) => {
           const sel = e.currentTarget as HTMLSelectElement;
@@ -154,6 +159,9 @@
           <option value={opt.id}>{opt.name} ({opt.count})</option>
         {/each}
       </select>
+      <span class="text-[0.65rem] text-[var(--text-muted)]">
+        {$t('filter_multi_hint')}
+      </span>
     </label>
 
     <label class="flex flex-col gap-1">
@@ -162,6 +170,7 @@
         multiple
         size="3"
         class="input"
+        title={$t('filter_multi_hint')}
         value={state.series.map(String)}
         onchange={(e) => {
           const sel = e.currentTarget as HTMLSelectElement;
@@ -172,6 +181,9 @@
           <option value={opt.id}>{opt.name} ({opt.count})</option>
         {/each}
       </select>
+      <span class="text-[0.65rem] text-[var(--text-muted)]">
+        {$t('filter_multi_hint')}
+      </span>
     </label>
 
     <label class="flex flex-col gap-1">
@@ -180,6 +192,7 @@
         multiple
         size="3"
         class="input"
+        title={$t('filter_multi_hint')}
         value={state.formats}
         onchange={(e) => {
           const sel = e.currentTarget as HTMLSelectElement;
@@ -190,6 +203,9 @@
           <option value={opt.name}>{opt.name} ({opt.count})</option>
         {/each}
       </select>
+      <span class="text-[0.65rem] text-[var(--text-muted)]">
+        {$t('filter_multi_hint')}
+      </span>
     </label>
 
     <label class="flex flex-col gap-1">
@@ -198,6 +214,7 @@
         multiple
         size="3"
         class="input"
+        title={$t('filter_multi_hint')}
         value={state.languages}
         onchange={(e) => {
           const sel = e.currentTarget as HTMLSelectElement;
@@ -208,6 +225,9 @@
           <option value={opt.name}>{opt.name} ({opt.count})</option>
         {/each}
       </select>
+      <span class="text-[0.65rem] text-[var(--text-muted)]">
+        {$t('filter_multi_hint')}
+      </span>
     </label>
 
     <div class="grid grid-cols-2 gap-2">
