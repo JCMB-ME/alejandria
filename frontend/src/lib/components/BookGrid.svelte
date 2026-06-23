@@ -3,6 +3,8 @@
   import Cover from './Cover.svelte';
   import SelectableBookCard from './library/SelectableBookCard.svelte';
   import { t } from '$stores/i18n';
+  import { libraryFilters, clearFilters } from '$stores/libraryFilters';
+  import { activeFilterCount } from '$stores/libraryFilters';
 
   interface Props {
     books: BookSummary[];
@@ -10,6 +12,8 @@
     selectable?: boolean;
   }
   let { books, loading = false, selectable = false }: Props = $props();
+
+  const filterCount = $derived(activeFilterCount($libraryFilters));
 </script>
 
 {#if loading}
@@ -24,7 +28,19 @@
   </div>
 {:else if books.length === 0}
   <div class="text-center py-12 text-[var(--text-muted)]">
-    <p>{$t('no_books_found')}</p>
+    {#if filterCount > 0}
+      <p class="mb-2">{$t('no_books_match_filters')}</p>
+      <p class="text-xs mb-4">{$t('active_filters_count', { n: filterCount })}</p>
+      <button
+        type="button"
+        class="btn btn-secondary"
+        onclick={() => clearFilters()}
+      >
+        {$t('filter_clear_all')}
+      </button>
+    {:else}
+      <p>{$t('no_books_found')}</p>
+    {/if}
   </div>
 {:else}
   <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
