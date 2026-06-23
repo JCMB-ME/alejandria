@@ -3,15 +3,32 @@
   import { page } from '$app/stores';
   import { books as booksApi, reader as readerApi, highlights as highlightsApi } from '$api/client';
   import { readerTheme, setReaderTheme } from '$stores/auth';
-  import type { BookDetail, ProgressRead } from '$api/types';
+  import type { BookDetail, ProgressRead, Highlight } from '$api/types';
   import { goto } from '$app/navigation';
   import ReaderToolbar from '$components/ReaderToolbar.svelte';
   import { t } from '$stores/i18n';
+  import { toast } from '$stores/toast';
 
   let book = $state<BookDetail | null>(null);
   let progress = $state<ProgressRead | null>(null);
   let container: HTMLDivElement = $state() as HTMLDivElement;
   let bookElement: HTMLElement = $state() as HTMLElement;
+
+  // EPUB virtual-page index state (Feature 1: jump-to-page).
+  // epubTotalPages is 0 until locations.generate(1024) resolves, at which
+  // point it holds the real virtual-page count (replaces the previous
+  // fake `100` denominator). epubCurrentPage is updated by the
+  // `relocated` listener once locations are ready. The input in the
+  // toolbar is disabled while locationsReady is false.
+  let epubTotalPages = $state(0);
+  let epubCurrentPage = $state(1);
+  let locationsReady = $state(false);
+  // Controlled value for the jump-to-page <input>. Synced to the
+  // current display page via $effect so prev/next/jump always reflect
+  // back into the field.
+  let pageInputValue = $state(1);
+  // Re-entrancy flag for goToPage — last dispatched jump wins.
+  let jumping = false;
 
   // Reader state. fontSize is now tracked in *rem* instead of px so the
   // user's iOS/Android "Larger Text" preference scales the reader text
@@ -25,7 +42,7 @@
   let toc = $state<{ id: string; label: string; href?: string }[]>([]);
   let showToc = $state(false);
   let showHighlights = $state(false);
-  let highlights = $state<any[]>([]);
+  let highlights = $state<Highlight[]>([]);
   let selectedText = $state('');
   let selectedCfi = $state('');
 
@@ -296,6 +313,18 @@
           ? bookInstance.locations.percentageFromCfi(cfi)
           : 0;
         currentPage = Math.round(pct * 100);
+        // Feature 1: also update the virtual-page index once locations
+        // are ready so the jump-to-page input shows the current page.
+        // Guarded the same way as percentageFromCfi — the first few
+        // relocated events fire before locations exist.
+        if (locationsReady && bookInstance.locations && bookInstance.locations.length) {
+          try {
+            const locIdx = bookInstance.locations.locationFromCfi(cfi);
+            if (typeof locIdx === 'number' && locIdx >= 0) {
+              epubCurrentPage = Math.min(epubTotalPages, locIdx + 1);
+            }
+          } catch {}
+        }
         saveProgress(cfi, pct);
       } catch (e) {
         // Locations might not be ready yet — silent.
@@ -311,9 +340,23 @@
       }));
     }).catch((e: any) => console.error('toc_load_failed', e));
 
-    // Generate locations for progress %
-    bookInstance.ready.then(() => {
-      bookInstance.locations.generate(1024);
+    // Generate locations for progress % AND for the jump-to-page input.
+    // Previously this was fire-and-forget; now we await it so the
+    // toolbar input can switch from disabled-with-placeholder to
+    // enabled as soon as the index is ready. If generate() rejects
+    // (very long book, OOM, fetch abort mid-load) we leave
+    // locationsReady=false so the input stays disabled and prev/next
+    // still work via rendition's own model.
+    bookInstance.ready.then(async () => {
+      try {
+        await bookInstance.locations.generate(1024);
+        epubTotalPages = bookInstance.locations.length() || 0;
+        locationsReady = epubTotalPages > 0;
+      } catch (e) {
+        console.error('locations_generate_failed', e);
+        // epubTotalPages stays 0, locationsReady stays false — the
+        // input will keep its "…" placeholder.
+      }
     }).catch((e: any) => console.error('locations_generate_failed', e));
 
     // Track selection for highlights
@@ -373,11 +416,20 @@
   async function saveHighlight(color = 'yellow') {
     if (!selectedCfi || !selectedText || !book) return;
     try {
+      // Feature 3a: for PDF/CBZ we record the current 1-based page
+      // number so the highlights drawer can later jump back to the
+      // exact page the user was on. For EPUB the CFI is the source of
+      // truth and locations-based virtual pages are not yet wired to
+      // this flow — leaving `page` undefined.
+      const page = (bookFormat?.type === 'pdf' || bookFormat?.type === 'cbz')
+        ? currentPageNum
+        : undefined;
       const h = await highlightsApi.create({
         book_id: book.id,
         cfi: selectedCfi,
         text: selectedText,
         color,
+        ...(page !== undefined ? { page } : {}),
       });
       highlights = [...highlights, h];
       applyHighlights();
@@ -610,6 +662,111 @@
     }).catch(() => {});
   }
 
+  // Feature 1: jump to a user-typed page (1-based) for any format.
+  // Clamps out-of-range input and non-numeric input silently so the
+  // user never sees a crash — the worst case is "lands on page 1".
+  async function goToPage(n: number) {
+    const total = displayTotal;
+    const target = Math.max(1, Math.min(total, Math.floor(n) || 1));
+    jumping = true;
+    try {
+      if (bookFormat?.type === 'pdf' && pdfDoc) {
+        renderPage(target);
+      } else if (bookFormat?.type === 'cbz' && cbzPages.length) {
+        renderCbzPage(target);
+      } else if (bookFormat?.type === 'epub' && rendition && bookInstance && locationsReady) {
+        const cfi = bookInstance.locations.cfiFromLocation(target - 1);
+        if (cfi) {
+          await rendition.display(cfi);
+          // rendition.display() does NOT synchronously emit `relocated`,
+          // so we explicitly save progress + update the virtual page.
+          saveProgress(cfi, (target - 1) / Math.max(1, epubTotalPages), 'cfi');
+          epubCurrentPage = target;
+        }
+      }
+    } catch (e) {
+      console.error('goToPage_failed', e);
+    } finally {
+      jumping = false;
+    }
+  }
+
+  // Feature 3b: jump to a saved highlight's location.
+  // EPUB uses the CFI (the rendition's display() handles it natively).
+  // PDF/CBZ use the recorded 1-based page number. For highlights created
+  // before Feature 3a (where `page` is null) we fall back to page 1
+  // rather than guessing from the CFI — the existing `saveProgress`
+  // in renderPage/renderCbzPage keeps the progress state consistent.
+  async function jumpToHighlight(h: Highlight) {
+    try {
+      if (bookFormat?.type === 'epub' && rendition) {
+        await rendition.display(h.cfi);
+      } else if (bookFormat?.type === 'pdf' && pdfDoc) {
+        const p = h.page ?? 1;
+        renderPage(p);
+      } else if (bookFormat?.type === 'cbz' && cbzPages.length) {
+        const p = h.page ?? 1;
+        renderCbzPage(p);
+      }
+    } catch (e) {
+      console.error('jumpToHighlight_failed', e);
+      toast.error('Could not jump to highlight');
+    }
+    // Always close the drawer — even if the jump failed the user has
+    // already taken the action they wanted.
+    showHighlights = false;
+  }
+
+  // Feature 2: delete a highlight (server + local state + reader).
+  // On EPUB we re-apply the remaining highlights to remove the
+  // annotation visually; on PDF/CBZ there's nothing in the reader to
+  // remove, so we just update local state.
+  async function deleteHighlight(id: number) {
+    if (!confirm($t('delete_highlight_confirm'))) return;
+    try {
+      await highlightsApi.delete(id);
+      highlights = highlights.filter((h) => h.id !== id);
+      if (rendition) {
+        // Re-render all remaining highlights — applyHighlights() first
+        // removes all known annotations, then re-adds them. The deleted
+        // CFI is no longer in `highlights` so it won't come back.
+        applyHighlights();
+      }
+    } catch (e) {
+      console.error('deleteHighlight_failed', e);
+      toast.error('Could not delete highlight');
+    }
+  }
+
+  // Feature 1: derived display values for the toolbar indicator and
+  // jump input. For EPUB these fall back to the previous "currentPage /
+  // 100" scheme while locations are still generating — the input is
+  // disabled during that window so the user cannot jump anyway.
+  let displayTotal = $derived(
+    bookFormat?.type === 'epub' ? (locationsReady ? epubTotalPages : 100) : totalPages
+  );
+  let displayPage = $derived(
+    bookFormat?.type === 'epub'
+      ? (locationsReady ? epubCurrentPage : currentPage)
+      : currentPageNum
+  );
+  let progressPct = $derived(
+    bookFormat?.type === 'pdf' || bookFormat?.type === 'cbz'
+      ? (currentPageNum - 1) / Math.max(1, totalPages)
+      : currentPage / 100
+  );
+
+  // Sync the jump input's controlled value with the current page so
+  // prev/next and successful jumps reflect into the field. Done in an
+  // effect (not at the call sites) because the user might also type a
+  // value mid-gesture and we don't want prev/next to clobber their
+  // input mid-keystroke — the input loses focus on each keystroke,
+  // but if it has focus the effect still runs harmlessly because Svelte
+  // treats this as a write to the same value (no re-render loop).
+  $effect(() => {
+    pageInputValue = displayPage;
+  });
+
   function nextPage() {
     if (bookFormat?.type === 'epub' && rendition) {
       rendition.next();
@@ -683,9 +840,12 @@
 >
   <ReaderToolbar
     {book}
-    progressPct={(bookFormat?.type === 'pdf' || bookFormat?.type === 'cbz') ? (currentPageNum - 1) / Math.max(1, totalPages) : currentPage / 100}
-    currentPage={(bookFormat?.type === 'pdf' || bookFormat?.type === 'cbz') ? currentPageNum : currentPage}
-    totalPages={(bookFormat?.type === 'pdf' || bookFormat?.type === 'cbz') ? totalPages : 100}
+    {progressPct}
+    currentPage={displayPage}
+    totalPages={displayTotal}
+    pageInputValue={pageInputValue}
+    pageInputTotal={displayTotal}
+    pageInputDisabled={bookFormat?.type === 'epub' && !locationsReady}
     fontSize={Math.round(fontSizeRem * 16)}
     {fontFamily}
     {lineHeight}
@@ -694,6 +854,7 @@
     {showHighlights}
     {highlights}
     selectedCfi={selectedCfi}
+    bookFormatType={(bookFormat?.type as 'epub' | 'pdf' | 'cbz' | 'fb2' | 'rtf' | 'txt' | null | undefined) ?? null}
     on:prev={prevPage}
     on:next={nextPage}
     on:fontSize={(e) => setFontSize(e.detail)}
@@ -705,6 +866,9 @@
     on:saveHighlight={(e) => saveHighlight(e.detail)}
     on:jumpToToc={(e) => { if (rendition && e.detail) rendition.display(e.detail); showToc = false; }}
     on:close={() => goto(`/books/${id}`)}
+    onJumpToPage={(n) => goToPage(n)}
+    onDeleteHighlight={(id) => deleteHighlight(id)}
+    onJumpToHighlight={(h) => jumpToHighlight(h)}
   />
 
   <!--
