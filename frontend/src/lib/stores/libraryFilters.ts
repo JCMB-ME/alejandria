@@ -12,6 +12,7 @@
 
 import { writable, get, type Writable } from 'svelte/store';
 import { browser } from '$app/environment';
+import { page } from '$app/stores';
 
 export interface LibraryFiltersState {
   authors: number[];
@@ -42,6 +43,20 @@ export const DEFAULT_FILTERS: LibraryFiltersState = {
 };
 
 const _state: Writable<LibraryFiltersState> = writable({ ...DEFAULT_FILTERS });
+
+// Synchronously seed the store from the URL on module load so the very
+// first render of /library sees the correct filters. The previous design
+// did this in `initLibraryFiltersBinding()` (called from onMount) via an
+// async `import('$app/stores')`, which created a race: the library page's
+// `$effect` would fire `load()` once with the default filters (showing
+// all books), then a tick later the URL params would overwrite the store,
+// firing `load()` again with the URL filters — sometimes the user would
+// see the "all books" flash, sometimes they'd see "no books found" first
+// if the filtered response won the race.
+if (browser) {
+  const initial = fromUrlParams(new URL(window.location.href).searchParams);
+  _state.set(initial);
+}
 
 /** Read a value from the store. */
 export const libraryFilters = { subscribe: _state.subscribe };
@@ -140,25 +155,19 @@ let _debounceTimer: ReturnType<typeof setTimeout> | null = null;
 export function initLibraryFiltersBinding(): void {
   if (!browser || _initialized) return;
   _initialized = true;
-  // Dynamic import so vitest (no SvelteKit) can load the store without
-  // resolving $app/stores at module-evaluation time.
-  void import('$app/stores').then(({ page }) => {
-    // Read once on init
-    const current = get(page).url;
-    _writingFromUrl = true;
-    _state.set(fromUrlParams(current.searchParams));
-    _writingFromUrl = false;
+  // The store is already seeded from the URL at module-load time (see the
+  // top-level `if (browser) { ... _state.set(...) }` block). We only
+  // need to wire up the URL<->state reactivity from here on.
 
-    // URL -> state (on every SvelteKit navigation, including back/forward)
-    page.subscribe((p) => {
-      if (!browser) return;
-      const next = fromUrlParams(p.url.searchParams);
-      const cur = get(_state);
-      if (shallowEqualFilters(cur, next)) return;
-      _writingFromUrl = true;
-      _state.set(next);
-      _writingFromUrl = false;
-    });
+  // URL -> state (on every SvelteKit navigation, including back/forward)
+  page.subscribe((p) => {
+    if (!browser) return;
+    const next = fromUrlParams(p.url.searchParams);
+    const cur = get(_state);
+    if (shallowEqualFilters(cur, next)) return;
+    _writingFromUrl = true;
+    _state.set(next);
+    _writingFromUrl = false;
   });
 
   // State -> URL (debounced)
