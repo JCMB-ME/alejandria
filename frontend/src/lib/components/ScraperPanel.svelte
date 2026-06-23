@@ -157,7 +157,8 @@
         {#each ALL_FORMATS as f}
           <label class="flex items-center gap-2 text-sm">
             <input
-              type="checkbox"
+              type="radio"
+              name="format"
               value={f}
               bind:group={formats}
             />
