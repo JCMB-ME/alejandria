@@ -14,9 +14,19 @@
     }
     try {
       const status = await security.status();
-      if (status.defaults_in_use && !dismissed) {
+      // Only show the banner for reasons that matter in production:
+      //   - default_secret: real risk, the JWT signing key is guessable
+      //   - insecure_cookie: HTTPS must be used so cookies aren't sniffable
+      // Skip dev-only flags (insecure_defaults_override) and skip
+      // first-time setup (no users yet — SPA routes to /register, where
+      // the "default password" wording would be confusing because the
+      // empty .env admin_password is intentional).
+      const productionReasons = (status.reasons ?? []).filter(
+        (r: string) => r === 'default_secret' || r === 'insecure_cookie',
+      );
+      if (!dismissed && status.has_users && productionReasons.length > 0) {
         visible = true;
-        reasons = status.reasons;
+        reasons = productionReasons;
       }
     } catch {
       // Backend unreachable; don't show a broken banner.
@@ -42,9 +52,14 @@
       <line x1="12" y1="17" x2="12.01" y2="17"/>
     </svg>
     <span class="flex-1">
-      Estás corriendo con la secret key o contraseña por defecto.
-      Cámbialas antes de exponer esto a internet.
-      {#if reasons.includes('default_secret') || reasons.includes('default_password')}
+      {#if reasons.includes('default_secret')}
+        Estás corriendo con la secret key por defecto. Cámbiala antes de exponer esto a internet.
+      {:else if reasons.includes('insecure_cookie')}
+        Tus cookies no están marcadas como seguras. Usa HTTPS en producción.
+      {:else}
+        Tu instalación tiene valores de configuración que conviene revisar antes de exponerla a internet.
+      {/if}
+      {#if reasons.includes('default_secret')}
         <a href="/settings" class="underline ml-1">{$t('security_banner_howto')}</a>
       {/if}
     </span>

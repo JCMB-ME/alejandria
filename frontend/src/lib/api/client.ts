@@ -349,6 +349,7 @@ export const scraper = {
 export interface SecurityStatus {
   defaults_in_use: boolean;
   reasons: string[];
+  has_users: boolean;
 }
 
 export const security = {
