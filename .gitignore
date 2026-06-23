@@ -55,6 +55,9 @@ library/
 covers/
 config/
 
+# Backup output (created by scripts/backup.sh)
+/backups/
+
 # User books dropped at the project root for quick import — never commit
 /*.epub
 /*.pdf
