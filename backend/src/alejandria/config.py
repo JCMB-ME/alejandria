@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import ClassVar, Literal
 
-from pydantic import Field, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,6 +30,9 @@ class Settings(BaseSettings):
 
     # Security
     secret_key: str = "change-me-in-production-please"
+    allow_insecure_defaults: bool = False  # ALEJANDRIA_ALLOW_INSECURE_DEFAULTS
+    cookie_secure: bool = True  # ALEJANDRIA_COOKIE_SECURE; set false for HTTP dev
+    opds_require_auth: bool = True  # ALEJANDRIA_OPDS_REQUIRE_AUTH
     session_lifetime: int = 60 * 60 * 24 * 30  # 30 days
     jwt_algorithm: str = "HS256"
     jwt_audience: str = "alejandria"
@@ -103,6 +107,63 @@ class Settings(BaseSettings):
         if str(v) == ":memory:":
             return v
         return v.resolve() if not v.is_absolute() else v
+
+    _DEFAULT_SECRET_VALUES: ClassVar[frozenset[str]] = frozenset({
+        "change-me-in-production-please",
+        "change-me-to-a-long-random-string",
+        "changeme",
+        "",
+    })
+    _DEFAULT_PASSWORD_VALUES: ClassVar[frozenset[str]] = frozenset({"changeme", ""})
+
+    @field_validator("secret_key", mode="after")
+    @classmethod
+    def _validate_secret_key(cls, v: str) -> str:
+        # Allow tests / dev to opt out with the escape hatch.
+        if os.environ.get("ALEJANDRIA_ALLOW_INSECURE_DEFAULTS", "").lower() in (
+            "1", "true", "yes"
+        ):
+            import structlog
+            structlog.get_logger(__name__).warning(
+                "insecure_defaults_override_active",
+                hint="ALEJANDRIA_ALLOW_INSECURE_DEFAULTS=true is set; do not run this in production.",
+            )
+            return v
+        if v in cls._DEFAULT_SECRET_VALUES:
+            raise ValueError(
+                "ALEJANDRIA_SECRET_KEY is set to a well-known default. "
+                "Generate a new one with: "
+                "python -c 'import secrets; print(secrets.token_urlsafe(64))' "
+                "and set it in .env. To override this check for local dev only, "
+                "set ALEJANDRIA_ALLOW_INSECURE_DEFAULTS=true."
+            )
+        if len(v) < 32:
+            raise ValueError(
+                f"ALEJANDRIA_SECRET_KEY is too short ({len(v)} chars). "
+                "Use at least 32 characters of high-entropy random data."
+            )
+        return v
+
+    @field_validator("admin_password", mode="after")
+    @classmethod
+    def _validate_admin_password(cls, v: str) -> str:
+        if os.environ.get("ALEJANDRIA_ALLOW_INSECURE_DEFAULTS", "").lower() in (
+            "1", "true", "yes"
+        ):
+            return v
+        if v in cls._DEFAULT_PASSWORD_VALUES:
+            raise ValueError(
+                "ALEJANDRIA_ADMIN_PASSWORD is set to a well-known default. "
+                "Change it to a strong password (>= 8 chars) and set it in .env. "
+                "To override this check for local dev only, "
+                "set ALEJANDRIA_ALLOW_INSECURE_DEFAULTS=true."
+            )
+        if len(v) < 8:
+            raise ValueError(
+                f"ALEJANDRIA_ADMIN_PASSWORD is too short ({len(v)} chars). "
+                "Use at least 8 characters."
+            )
+        return v
 
     @property
     def calibre_metadata_db(self) -> Path:

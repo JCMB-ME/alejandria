@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -10,8 +10,9 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from alejandria.auth.dependencies import get_current_user, get_optional_user
+from alejandria.auth.dependencies import get_current_user, revoke_session
 from alejandria.auth.oidc import OIDCClient
+from alejandria.auth.rate_limit import check_login_rate_limit, record_login_attempt
 from alejandria.auth.security import (
     create_access_token,
     generate_csrf_token,
@@ -28,7 +29,6 @@ from alejandria.schemas.auth import (
     RegisterRequest,
     SetupStatus,
     TokenResponse,
-    UserCreate,
     UserRead,
     UserUpdate,
 )
@@ -38,11 +38,21 @@ router = APIRouter()
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
+    request: Request,
     response: Response,
     form: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Annotated[Session, Depends(get_db)],
 ) -> TokenResponse:
     """Login via OAuth2 password flow (form-encoded)."""
+    retry_after = check_login_rate_limit(db, request)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+    record_login_attempt(db, request)
+
     user = db.execute(
         select(User).where(User.username == form.username)
     ).scalar_one_or_none()
@@ -60,11 +70,21 @@ async def login(
 
 @router.post("/login/json", response_model=TokenResponse)
 async def login_json(
+    request: Request,
     payload: LoginRequest,
     response: Response,
     db: Annotated[Session, Depends(get_db)],
 ) -> TokenResponse:
     """Login via JSON body (for SPA)."""
+    retry_after = check_login_rate_limit(db, request)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+    record_login_attempt(db, request)
+
     user = db.execute(
         select(User).where(User.username == payload.username)
     ).scalar_one_or_none()
@@ -87,14 +107,7 @@ async def logout(
 ) -> dict:
     """Logout: invalidate the current session."""
     token = request.cookies.get("alejandria_session") or ""
-    if token:
-        th = hash_token(token)
-        sess = db.execute(
-            select(UserSession).where(UserSession.token_hash == th)
-        ).scalar_one_or_none()
-        if sess:
-            db.delete(sess)
-            db.commit()
+    revoke_session(db, token)
     response.delete_cookie("alejandria_session")
     return {"status": "ok"}
 
@@ -116,7 +129,7 @@ async def update_me(
     allowed = {"username", "email", "display_name", "password", "kindle_email",
                "reader_theme", "reader_font_size", "reader_line_height", "reader_font_family"}
     data = payload.model_dump(exclude_unset=True)
-    
+
     # Check if username is being changed and is already taken
     if "username" in data and data["username"] is not None and data["username"] != user.username:
         existing_user = db.execute(
@@ -225,11 +238,11 @@ def _issue_token(
         token_hash=hash_token(token),
         csrf_token=csrf,
         user_agent=user_agent[:512] if user_agent else None,
-        expires_at=datetime.now(timezone.utc) + timedelta(seconds=settings.session_lifetime),
+        expires_at=datetime.now(UTC) + timedelta(seconds=settings.session_lifetime),
     )
     db.add(sess)
 
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(UTC)
     db.commit()
 
     response.set_cookie(
@@ -237,7 +250,7 @@ def _issue_token(
         value=token,
         max_age=settings.session_lifetime,
         httponly=True,
-        secure=False,  # Set True behind HTTPS proxy
+        secure=settings.cookie_secure,
         samesite="lax",
         path="/",
     )
@@ -246,6 +259,7 @@ def _issue_token(
         value=csrf,
         max_age=settings.session_lifetime,
         httponly=False,
+        secure=settings.cookie_secure,
         samesite="strict",
         path="/",
     )

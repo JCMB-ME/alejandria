@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy import create_engine, event
@@ -86,7 +85,7 @@ def get_db() -> Iterator[Session]:
 
 def reset_engine_cache() -> None:
     """Reset engine cache (for testing)."""
-    global engine, SessionLocal  # noqa: PLW0603
+    global engine, SessionLocal
     engine.dispose()
     engine = _make_engine()
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)

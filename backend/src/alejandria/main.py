@@ -16,6 +16,10 @@ from fastapi.staticfiles import StaticFiles
 from alejandria import __version__
 from alejandria.config import get_settings
 from alejandria.db import init_db
+from alejandria.middleware.security_headers import (
+    CSRFMiddleware,
+    SecurityHeadersMiddleware,
+)
 from alejandria.routers import (
     auth,
     books,
@@ -27,9 +31,12 @@ from alejandria.routers import (
     opds,
     reader,
     scraper,
-    settings as settings_router,
+    security,
     shelves,
     stats,
+)
+from alejandria.routers import (
+    settings as settings_router,
 )
 from alejandria.services.scanner import LibraryScanner
 from alejandria.services.scraper.manager import get_scraper_manager
@@ -74,6 +81,16 @@ async def lifespan(app: FastAPI):
     # Init database
     init_db()
 
+    # Boot-time security warnings.
+    if not settings.opds_require_auth:
+        logger.warning(
+            "opds_public_mode_active",
+            message=(
+                "OPDS is exposed without authentication (ALEJANDRIA_OPDS_REQUIRE_AUTH=false). "
+                "Anyone who can reach this port can enumerate the library."
+            ),
+        )
+
     # Ensure default admin user
     await ensure_admin_user()
 
@@ -87,7 +104,7 @@ async def lifespan(app: FastAPI):
     app.state.scraper_manager = scraper_manager
     try:
         await scraper_manager.start()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.error("scraper_manager_start_failed", error=str(e))
 
     logger.info("alejandria_ready", url=f"http://{settings.host}:{settings.port}")
@@ -97,7 +114,7 @@ async def lifespan(app: FastAPI):
     logger.info("alejandria_stopping")
     try:
         await scraper_manager.stop()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     scanner.stop()
 
@@ -124,6 +141,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(CSRFMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
 
     # API routers
     app.include_router(health.router, prefix="/api", tags=["health"])
@@ -138,6 +157,7 @@ def create_app() -> FastAPI:
     app.include_router(settings_router.router, prefix="/api/settings", tags=["settings"])
     app.include_router(highlights.router, prefix="/api/highlights", tags=["highlights"])
     app.include_router(scraper.router, prefix="/api/scraper", tags=["scraper"])
+    app.include_router(security.router, prefix="/api/security", tags=["security"])
     app.include_router(opds.router, prefix="/opds", tags=["opds"])
 
     # Global exception handler

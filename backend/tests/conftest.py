@@ -14,12 +14,14 @@ if os.path.exists(_TEST_DB_PATH):
         os.remove(_TEST_DB_PATH)
     except OSError:
         pass
-os.environ["ALEJANDRIA_SECRET_KEY"] = "test-secret-key-for-testing-only"
+os.environ["ALEJANDRIA_SECRET_KEY"] = "test-secret-key-for-testing-only-do-not-ship"  # noqa: S105
+os.environ["ALEJANDRIA_ALLOW_INSECURE_DEFAULTS"] = "true"
 os.environ["ALEJANDRIA_DB_PATH"] = _TEST_DB_PATH
 os.environ["ALEJANDRIA_LIBRARY_PATH"] = "/tmp/alejandria-test-library"
 os.environ["ALEJANDRIA_CONFIG_PATH"] = "/tmp/alejandria-test-config"
-os.environ["ALEJANDRIA_ADMIN_PASSWORD"] = "testpass"
+os.environ["ALEJANDRIA_ADMIN_PASSWORD"] = "testpass"  # noqa: S105
 os.environ["ALEJANDRIA_DEV_MODE"] = "true"
+os.environ["ALEJANDRIA_COOKIE_SECURE"] = "false"  # TestClient is plain HTTP
 os.environ["ALEJANDRIA_SCRAPER_OUTPUT_DIR"] = "/tmp/alejandria-test-scrapes"
 os.environ["ALEJANDRIA_SCRAPER_ADAPTERS_FILE"] = "/tmp/alejandria-test-adapters.yaml"
 
