@@ -27,6 +27,12 @@
   // current display page via $effect so prev/next/jump always reflect
   // back into the field.
   let pageInputValue = $state(1);
+  // Sentinel incremented every time the page actually changes (via
+  // prev/next/jumpToHighlight/TOC jump). The $effect below reads it so
+  // it only re-syncs pageInputValue from displayPage on navigation,
+  // NOT on every keystroke in the input (which would clobber the
+  // user's typed value).
+  let lastNavigatedPage = $state(0);
   // Re-entrancy flag for goToPage — last dispatched jump wins.
   let jumping = false;
 
@@ -321,7 +327,16 @@
           try {
             const locIdx = bookInstance.locations.locationFromCfi(cfi);
             if (typeof locIdx === 'number' && locIdx >= 0) {
-              epubCurrentPage = Math.min(epubTotalPages, locIdx + 1);
+              const nextPage = Math.min(epubTotalPages, locIdx + 1);
+              if (nextPage !== epubCurrentPage) {
+                epubCurrentPage = nextPage;
+                // Bump the sentinel so the jump-input $effect re-syncs
+                // pageInputValue from displayPage. This covers EPUB
+                // prev/next, goToPage (rendition.display eventually
+                // fires relocated), TOC jumps, and jumpToHighlight —
+                // all of which route through this listener.
+                lastNavigatedPage++;
+              }
             }
           } catch {}
         }
@@ -341,23 +356,44 @@
     }).catch((e: any) => console.error('toc_load_failed', e));
 
     // Generate locations for progress % AND for the jump-to-page input.
-    // Previously this was fire-and-forget; now we await it so the
-    // toolbar input can switch from disabled-with-placeholder to
-    // enabled as soon as the index is ready. If generate() rejects
-    // (very long book, OOM, fetch abort mid-load) we leave
-    // locationsReady=false so the input stays disabled and prev/next
-    // still work via rendition's own model.
+    // Wrapped in a 15s timeout (very large EPUBs can hang) with one retry
+    // at a smaller chunk size (512 instead of 1024) — epub.js lets us vary
+    // the granularity and a coarser index is much faster. On final failure
+    // we toast the user so they know why the jump input stayed disabled
+    // (previously the error was silent). prev/next still work via
+    // rendition's own model even when locations fail.
+    const LOCATIONS_TIMEOUT_MS = 15000;
+    const generateWithTimeout = (chunk: number) =>
+      Promise.race([
+        bookInstance.locations.generate(chunk),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`locations.generate(${chunk}) timed out after ${LOCATIONS_TIMEOUT_MS}ms`)), LOCATIONS_TIMEOUT_MS)
+        ),
+      ]);
     bookInstance.ready.then(async () => {
-      try {
-        await bookInstance.locations.generate(1024);
-        epubTotalPages = bookInstance.locations.length() || 0;
-        locationsReady = epubTotalPages > 0;
-      } catch (e) {
-        console.error('locations_generate_failed', e);
-        // epubTotalPages stays 0, locationsReady stays false — the
-        // input will keep its "…" placeholder.
+      let lastErr: unknown;
+      for (const chunk of [1024, 512]) {
+        try {
+          await generateWithTimeout(chunk);
+          if ((bookInstance.locations.length() || 0) > 0) {
+            epubTotalPages = bookInstance.locations.length();
+            locationsReady = true;
+            return;
+          }
+        } catch (e) {
+          lastErr = e;
+          console.error('locations_generate_failed', { chunk, error: e });
+        }
       }
-    }).catch((e: any) => console.error('locations_generate_failed', e));
+      // Both attempts failed — keep input disabled, surface the reason.
+      locationsReady = false;
+      epubTotalPages = 0;
+      console.error('locations_generate_failed_final', lastErr);
+      toast.error($t('jump_locations_failed'));
+    }).catch((e: any) => {
+      console.error('locations_generate_failed', e);
+      toast.error($t('jump_locations_failed'));
+    });
 
     // Track selection for highlights
     rendition.on('selected', (cfiRange: string, contents: any) => {
@@ -672,8 +708,10 @@
     try {
       if (bookFormat?.type === 'pdf' && pdfDoc) {
         renderPage(target);
+        lastNavigatedPage++;
       } else if (bookFormat?.type === 'cbz' && cbzPages.length) {
         renderCbzPage(target);
+        lastNavigatedPage++;
       } else if (bookFormat?.type === 'epub' && rendition && bookInstance && locationsReady) {
         const cfi = bookInstance.locations.cfiFromLocation(target - 1);
         if (cfi) {
@@ -682,6 +720,7 @@
           // so we explicitly save progress + update the virtual page.
           saveProgress(cfi, (target - 1) / Math.max(1, epubTotalPages), 'cfi');
           epubCurrentPage = target;
+          lastNavigatedPage++;
         }
       }
     } catch (e) {
@@ -764,7 +803,13 @@
   // but if it has focus the effect still runs harmlessly because Svelte
   // treats this as a write to the same value (no re-render loop).
   $effect(() => {
-    pageInputValue = displayPage;
+    // Read both so the effect tracks them as dependencies. Re-syncs the
+    // input from displayPage when navigation happens (lastNavigatedPage
+    // changed) or when displayPage itself changes — but NOT when the
+    // user types into the input (only pageInputValue changes there).
+    const p = displayPage;
+    const nav = lastNavigatedPage;
+    pageInputValue = p;
   });
 
   function nextPage() {
@@ -772,8 +817,10 @@
       rendition.next();
     } else if (bookFormat?.type === 'pdf' && pdfDoc) {
       renderPage(currentPageNum + 1);
+      lastNavigatedPage++;
     } else if (bookFormat?.type === 'cbz' && cbzPages.length) {
       renderCbzPage(currentPageNum + 1);
+      lastNavigatedPage++;
     }
   }
 
@@ -782,8 +829,10 @@
       rendition.prev();
     } else if (bookFormat?.type === 'pdf' && pdfDoc) {
       renderPage(currentPageNum - 1);
+      lastNavigatedPage++;
     } else if (bookFormat?.type === 'cbz' && cbzPages.length) {
       renderCbzPage(currentPageNum - 1);
+      lastNavigatedPage++;
     }
   }
 

@@ -84,10 +84,10 @@
 
     <div class="flex-1 min-w-0 text-center">
       <div class="text-sm font-medium truncate">{book?.title || $t('reading_loading')}</div>
-      <div class="text-xs text-[var(--text-soft)] flex items-center justify-center gap-2 min-w-0 truncate">
-        <button class="hover:text-[var(--text)] touch-target" onclick={() => dispatch('prev')} aria-label={$t('prev')}>‹ {$t('prev')}</button>
-        <span class="whitespace-nowrap">{currentPage} / {totalPages}</span>
-        <button class="hover:text-[var(--text)] touch-target" onclick={() => dispatch('next')} aria-label={$t('next')}>{$t('next')} ›</button>
+      <div class="text-xs text-[var(--text-soft)] flex items-center justify-center gap-1 min-w-0 overflow-x-auto whitespace-nowrap scrollbar-none">
+        <button class="hover:text-[var(--text)] touch-target shrink-0" onclick={() => dispatch('prev')} aria-label={$t('prev')}>‹ {$t('prev')}</button>
+        <span class="whitespace-nowrap shrink-0">{currentPage} / {totalPages}</span>
+        <button class="hover:text-[var(--text)] touch-target shrink-0" onclick={() => dispatch('next')} aria-label={$t('next')}>{$t('next')} ›</button>
         <!--
           Feature 1: jump-to-page input + button. Sits between `› next`
           and the progress percentage so the visual order is
@@ -95,38 +95,43 @@
           controlled by the parent (`pageInputValue`) and disabled while
           EPUB locations are still generating (`pageInputDisabled`).
           The `min`/`max` are browser-side hints — the parent clamps
-          defensively in goToPage() anyway.
+          defensively in goToPage() anyway. The whole input+button
+          group is wrapped in its own flex with shrink-0 so it stays
+          reachable (via horizontal scroll on narrow viewports) instead
+          of being truncated off-screen by the `min-w-0` on the parent.
         -->
-        <input
-          type="number"
-          min="1"
-          max={pageInputTotal}
-          value={pageInputValue}
-          disabled={pageInputDisabled}
-          placeholder={pageInputDisabled ? '…' : String(pageInputValue || 1)}
-          aria-label={$t('jump_to_page')}
-          onkeydown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              onJumpToPage?.(pageInputValue);
-            }
-          }}
-          oninput={(e) => {
-            const v = parseInt((e.currentTarget as HTMLInputElement).value, 10);
-            if (!Number.isNaN(v)) pageInputValue = v;
-          }}
-          class="w-12 text-center text-xs bg-transparent border rounded px-1 py-0.5"
-        />
-        <span>/</span>
-        <span>{pageInputTotal}</span>
-        <button
-          class="btn btn-ghost !p-2 touch-target"
-          disabled={pageInputDisabled}
-          onclick={() => onJumpToPage?.(pageInputValue)}
-          aria-label={$t('jump_btn')}
-          title={$t('jump_btn')}
-        >{$t('jump_btn')}</button>
-        <span class="whitespace-nowrap">· {Math.round((progressPct || 0) * 100)}%</span>
+        <div class="flex items-center gap-1 shrink-0">
+          <input
+            type="number"
+            min="1"
+            max={pageInputTotal}
+            value={pageInputValue}
+            disabled={pageInputDisabled}
+            placeholder={pageInputDisabled ? '…' : String(pageInputValue || 1)}
+            aria-label={$t('jump_to_page')}
+            onkeydown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                onJumpToPage?.(pageInputValue);
+              }
+            }}
+            oninput={(e) => {
+              const v = parseInt((e.currentTarget as HTMLInputElement).value, 10);
+              if (!Number.isNaN(v)) pageInputValue = v;
+            }}
+            class="w-10 text-center text-xs bg-transparent border rounded px-1 py-0.5"
+          />
+          <span>/</span>
+          <span>{pageInputTotal}</span>
+          <button
+            class="btn btn-ghost !p-2 touch-target"
+            disabled={pageInputDisabled}
+            onclick={() => onJumpToPage?.(pageInputValue)}
+            aria-label={$t('jump_btn')}
+            title={$t('jump_btn')}
+          >{$t('jump_btn')}</button>
+        </div>
+        <span class="whitespace-nowrap shrink-0">· {Math.round((progressPct || 0) * 100)}%</span>
       </div>
     </div>
 
@@ -386,11 +391,15 @@
     background: var(--elevated);
   }
   /* Hide the horizontal scrollbar on the controls bar so it doesn't
-     waste vertical space on mobile. Still scrollable via touch/drag. */
-  .overflow-x-auto::-webkit-scrollbar {
+     waste vertical space on mobile. Still scrollable via touch/drag.
+     `.scrollbar-none` covers row 1 (page indicator / jump input) while
+     `.overflow-x-auto` covers the explicit mobile/desktop controls rows. */
+  .overflow-x-auto::-webkit-scrollbar,
+  .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
-  .overflow-x-auto {
+  .overflow-x-auto,
+  .scrollbar-none {
     scrollbar-width: none;
   }
 </style>
