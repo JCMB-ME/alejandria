@@ -5,6 +5,7 @@
   import { t, language, setLanguage } from '$stores/i18n';
   import type { User } from '$api/types';
   import { toast } from '$stores/toast';
+  import { confirm } from '$stores/confirm';
 
   // Custom theme creator state
   let newThemeName = $state('');
@@ -40,11 +41,15 @@
     newThemeName = '';
   }
 
-  function handleDeleteTheme(id: string) {
-    if (confirm($t('delete_theme_confirm'))) {
-      deleteCustomTheme(id);
-      toast.success('Theme deleted');
-    }
+  async function handleDeleteTheme(id: string) {
+    if (!await confirm({
+      title: $t('delete_theme'),
+      message: $t('delete_theme_confirm'),
+      confirmLabel: $t('delete_btn'),
+      cancelLabel: $t('cancel_btn'),
+    })) return;
+    deleteCustomTheme(id);
+    toast.success('Theme deleted');
   }
 
   interface MirrorStatus {

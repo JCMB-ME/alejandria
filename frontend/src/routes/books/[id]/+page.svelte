@@ -7,6 +7,7 @@
   import Cover from '$components/Cover.svelte';
   import { t, language, translateShelfName } from '$stores/i18n';
   import { toast } from '$stores/toast';
+  import { confirm } from '$stores/confirm';
 
   let book = $state<BookDetail | null>(null);
   let progress = $state<ProgressRead | null>(null);
@@ -109,7 +110,13 @@
 
   async function deleteBook() {
     if (!book) return;
-    if (!confirm($t('delete_book_confirm'))) return;
+    if (!await confirm({
+      title: $t('delete_book'),
+      message: [$t('delete_book_confirm'), $t('delete_book_warning')],
+      confirmLabel: $t('delete_btn'),
+      cancelLabel: $t('cancel_btn'),
+      danger: true,
+    })) return;
     deleting = true;
     try {
       await booksApi.delete(book.id);

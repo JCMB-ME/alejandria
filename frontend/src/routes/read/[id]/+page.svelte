@@ -8,6 +8,7 @@
   import ReaderToolbar from '$components/ReaderToolbar.svelte';
   import { t } from '$stores/i18n';
   import { toast } from '$stores/toast';
+  import { confirm } from '$stores/confirm';
 
   let book = $state<BookDetail | null>(null);
   let progress = $state<ProgressRead | null>(null);
@@ -761,7 +762,10 @@
   // annotation visually; on PDF/CBZ there's nothing in the reader to
   // remove, so we just update local state.
   async function deleteHighlight(id: number) {
-    if (!confirm($t('delete_highlight_confirm'))) return;
+    if (!await confirm({
+      title: $t('delete_highlight'),
+      message: $t('delete_highlight_confirm'),
+    })) return;
     try {
       await highlightsApi.delete(id);
       highlights = highlights.filter((h) => h.id !== id);

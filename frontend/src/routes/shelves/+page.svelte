@@ -6,6 +6,7 @@
   import { goto } from '$app/navigation';
   import { toast } from '$stores/toast';
   import { t, language, translateShelfName } from '$stores/i18n';
+  import { confirm } from '$stores/confirm';
 
   let shelves = $state<Shelf[]>([]);
   let selected = $state<Shelf | null>(null);
@@ -16,7 +17,10 @@
 
   async function deleteSelectedShelf() {
     if (!selected) return;
-    if (!confirm($t('delete_shelf_confirm'))) return;
+    if (!await confirm({
+      title: $t('delete_shelf'),
+      message: $t('delete_shelf_confirm'),
+    })) return;
     try {
       await shelvesApi.delete(selected.id);
       toast.success($t('shelf_deleted_success'));
