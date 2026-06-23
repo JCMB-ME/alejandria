@@ -16,20 +16,25 @@ from starlette.responses import JSONResponse, Response
 
 from alejandria.auth.csrf import csrf_protect
 
-# CSP is conservative for a SvelteKit SPA + EPUB.js reader.
-#   - default-src 'self'             — same-origin by default
-#   - img-src 'self' data: blob:     — covers inline covers and the EPUB blob URLs
-#   - style-src 'self' 'unsafe-inline' — SvelteKit emits inline styles in dev
-#   - script-src 'self'              — Vite production emits same-origin bundles
-#   - connect-src 'self' ws: wss:    — Vite HMR in dev (ws:); production same-origin
-#   - frame-src 'self' blob:         — EPUB.js renders book content in blob: iframes
-#   - object-src 'none'              — no plugins
-#   - base-uri 'self'                — prevents <base> hijacks
+# CSP for a SvelteKit SPA + EPUB.js reader.
+#   - default-src 'self'                 — same-origin by default
+#   - img-src 'self' data: blob:         — covers inline covers and EPUB blob URLs
+#   - style-src 'self' 'unsafe-inline'   — SvelteKit emits inline styles
+#   - script-src 'self' 'unsafe-inline'  — SvelteKit adapter-static emits a
+#                                          small inline boot script that
+#                                          imports the entry bundle; without
+#                                          'unsafe-inline' the SPA never
+#                                          hydrates. The bundle itself is
+#                                          same-origin (still gated by 'self').
+#   - connect-src 'self' ws: wss:        — Vite HMR in dev; production same-origin
+#   - frame-src 'self' blob:             — EPUB.js renders book content in blob: iframes
+#   - object-src 'none'                  — no plugins
+#   - base-uri 'self'                    — prevents <base> hijacks
 _CSP = (
     "default-src 'self'; "
     "img-src 'self' data: blob:; "
     "style-src 'self' 'unsafe-inline'; "
-    "script-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
     "connect-src 'self' ws: wss:; "
     "frame-src 'self' blob:; "
     "object-src 'none'; "

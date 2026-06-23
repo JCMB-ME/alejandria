@@ -202,6 +202,18 @@ def create_app() -> FastAPI:
                 return FileResponse(rob, media_type="text/plain")
             return HTMLResponse(status_code=404)
 
+        @app.get("/theme-init.js", include_in_schema=False)
+        async def theme_init():
+            """Theme init script (externalized from app.html to satisfy strict CSP).
+
+            Loaded in <head> before the SvelteKit bundle hydrates so the
+            data-theme attribute is set synchronously and there's no FOUC.
+            """
+            ti = static_path / "theme-init.js"
+            if ti.exists():
+                return FileResponse(ti, media_type="application/javascript")
+            return HTMLResponse(status_code=404)
+
         @app.get("/manifest.webmanifest", include_in_schema=False)
         async def manifest():
             mf = static_path / "manifest.webmanifest"
