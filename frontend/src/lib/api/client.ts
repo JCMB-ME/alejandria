@@ -10,6 +10,12 @@ import type * as Types from './types';
 
 const API_BASE = '';
 
+// Per-URL ETag cache for conditional GETs. Stores the ETag header value
+// returned from a prior 200 response; re-sent as `If-None-Match` on the
+// next GET to that exact path. Server returns 304 when unchanged; the
+// client treats that as "not modified" (callers re-fetch on next call).
+const _etagCache = new Map<string, string>();
+
 export class APIError extends Error {
   status: number;
   detail: string;
@@ -33,6 +39,11 @@ async function request<T>(
     headers['Content-Type'] = 'application/json';
   }
 
+  // Re-send the cached ETag for GETs that opt into caching.
+  if (method === 'GET' && _etagCache.has(path)) {
+    headers['If-None-Match'] = _etagCache.get(path)!;
+  }
+
   // Attach CSRF token for non-GET requests
   if (browser && method !== 'GET' && method !== 'HEAD') {
     const csrf = getCookie('alejandria_csrf');
@@ -48,6 +59,14 @@ async function request<T>(
     body: body !== undefined ? (options.isForm ? body : JSON.stringify(body)) : undefined,
   });
 
+  // Cache ETag on successful responses (200 + has ETag header).
+  if (method === 'GET') {
+    const etag = res.headers.get('etag');
+    if (res.status === 200 && etag) {
+      _etagCache.set(path, etag);
+    }
+  }
+
   if (res.status === 401) {
     if (browser) {
       clearUser();
@@ -57,6 +76,14 @@ async function request<T>(
       }
     }
     throw new APIError(401, 'Not authenticated');
+  }
+
+  // 304 Not Modified: server says our cached body is still valid.
+  // We don't store the body itself (Phase C scope), so callers will
+  // re-fetch on next call. Throw a sentinel APIError so callers can
+  // branch on status 304.
+  if (res.status === 304) {
+    throw new APIError(304, 'Not modified');
   }
 
   if (!res.ok) {

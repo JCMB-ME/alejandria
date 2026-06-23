@@ -131,11 +131,7 @@ async def get_shelf(
             select(ShelfBook).where(ShelfBook.shelf_id == shelf_id).order_by(ShelfBook.sort_order)
         ).scalars()]
     calibre = get_calibre_db()
-    books = []
-    for bid in book_ids[:100]:
-        book = calibre.get_book(bid)
-        if book:
-            books.append(calibre._to_summary(book))
+    books = await calibre.aget_books_summaries(book_ids[:100])
     return ShelfWithBooks(
         id=shelf.id, user_id=shelf.user_id, name=shelf.name, slug=shelf.slug,
         description=shelf.description, icon=shelf.icon, color=shelf.color,

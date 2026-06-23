@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from alejandria.auth.dependencies import get_current_user, get_optional_user
@@ -30,6 +31,8 @@ router = APIRouter()
 
 @router.get("", response_model=BookListResponse)
 async def list_books(
+    request: Request,
+    response: Response,
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User | None, Depends(get_optional_user)],
     page: int = Query(1, ge=1),
@@ -40,14 +43,22 @@ async def list_books(
     series: int | None = None,
     sort: str = Query("sort_title", pattern=r"^(id|title|sort_title|timestamp|pubdate|last_modified|series_index)$"),
     order: str = Query("asc", pattern=r"^(asc|desc)$"),
-) -> BookListResponse:
+) -> BookListResponse | Response:
     """List books in the library with optional filters and pagination."""
     calibre = get_calibre_db()
-    items, total = calibre.list_books(
+    items, total = await calibre.alist_books(
         page=page, page_size=page_size, search=search,
         author_id=author, tag_id=tag, series_id=series,
         sort=sort, order=order,
     )
+    etag_token = await calibre.aget_etag_token()
+    etag = f'W/"{total}-{etag_token}"'
+    if request.headers.get("if-none-match") == etag:
+        # Returning a bare Response with status 304; the client will
+        # treat it as not-modified and skip the body.
+        return Response(status_code=304, headers={"ETag": etag})
+    response.headers["ETag"] = etag
+    response.headers["Cache-Control"] = "private, max-age=60"
     return BookListResponse(
         items=items,
         total=total,
@@ -65,7 +76,7 @@ async def get_book(
 ) -> BookDetail:
     """Get detailed metadata for a single book."""
     calibre = get_calibre_db()
-    book = calibre.get_book(book_id)
+    book = await calibre.aget_book(book_id)
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
     return calibre._to_detail(book)
@@ -75,7 +86,7 @@ async def get_book(
 async def get_book_formats(book_id: int) -> dict:
     """List available formats for a book."""
     calibre = get_calibre_db()
-    book = calibre.get_book(book_id)
+    book = await calibre.aget_book(book_id)
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
     return {

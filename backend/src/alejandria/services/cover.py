@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import io
 from pathlib import Path
 
@@ -29,6 +30,16 @@ def cover_cache_path(book_id: int, size: str = "medium") -> Path:
     width = COVER_SIZES.get(size, 800)
     suffix = "orig" if width == 0 else str(width)
     return settings.caches_path / "covers" / str(book_id) / f"{suffix}.jpg"
+
+
+# Memoize the resolved cache-file path so repeated cover requests don't
+# re-stat the disk. The cache key is (book_id, size); the value is the
+# Path to the on-disk cache file (or None when no cache yet exists).
+# 2048 entries × 8 bytes/key + ~80 bytes/value ≈ 200 KB max.
+@functools.lru_cache(maxsize=2048)
+def _cached_cover_path(book_id: int, size: str) -> Path | None:
+    cache = cover_cache_path(book_id, size)
+    return cache if cache.exists() else None
 
 
 def extract_cover_from_file(file_path: Path) -> bytes | None:
@@ -150,9 +161,12 @@ def _extract_via_calibre(file_path: Path) -> bytes | None:
 
 def get_cover(book_id: int, size: str = "medium") -> bytes | None:
     """Get cover image bytes, extracting and caching if needed."""
+    cached = _cached_cover_path(book_id, size)
+    if cached is not None:
+        return cached.read_bytes()
+    # Fall through to extraction. The new path will populate the cache
+    # and the next call will hit `_cached_cover_path` instead.
     cache = cover_cache_path(book_id, size)
-    if cache.exists():
-        return cache.read_bytes()
 
     calibre = get_calibre_db()
     fmt_path = calibre.get_first_format(book_id)
@@ -175,6 +189,16 @@ def get_cover(book_id: int, size: str = "medium") -> bytes | None:
     if target_w > 0:
         try:
             img = Image.open(io.BytesIO(raw))
+            # For covers > 500 KB, ask Pillow to decode at a reduced size
+            # so we don't allocate the full bitmap (e.g., a 5 MB
+            # 4000x6000 cover decodes to ~96 MB raw).
+            if len(raw) > 500_000 and img.format in {"JPEG", "PNG", "WEBP"}:
+                # Image.draft() decodes only enough for the requested
+                # size. The ratio argument is "at most Nx" — we pass
+                # target_w / img.width and let Pillow pick the closest
+                # supported scale factor.
+                ratio = target_w / img.width if img.width > target_w else 1.0
+                img.draft(img.mode, (target_w, int(img.height * ratio)))
             if img.width > target_w:
                 ratio = target_w / img.width
                 new_h = int(img.height * ratio)
@@ -190,4 +214,6 @@ def get_cover(book_id: int, size: str = "medium") -> bytes | None:
     # Save to cache
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_bytes(raw)
+    # Drop the LRU's stale "no cache" entry for this (book_id, size).
+    _cached_cover_path.cache_clear()
     return raw

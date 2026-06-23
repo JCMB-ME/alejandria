@@ -11,6 +11,7 @@ Schema reference: https://manual.calibre-ebook.com/develop.html#the-catalog-api
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 import threading
 from collections.abc import Iterator
@@ -284,15 +285,28 @@ class CalibreDB:
             )
             rows = conn.execute(sql, params + [page_size, offset]).fetchall()
 
+        # Fetch related tables in ONE round-trip per table, keyed by the page's ids.
+        # Previous version did 4 queries per book (24 books = 96 queries per page).
+        book_ids = [row["id"] for row in rows]
+        authors_by_book: dict[int, list] = {}
+        tags_by_book: dict[int, list] = {}
+        series_by_book: dict[int, Any] = {}
+        formats_by_book: dict[int, list] = {}
+        if book_ids:
+            with self.connect() as conn:
+                authors_by_book = self._authors_for_many(conn, book_ids)
+                tags_by_book = self._tags_for_many(conn, book_ids)
+                series_by_book = self._series_for_many(conn, book_ids)
+                formats_by_book = self._formats_for_many(conn, book_ids)
+
         books: list[BookSummary] = []
         for row in rows:
             book = dict(row)
-            book_id = book["id"]
-            with self.connect() as conn:
-                book["authors"] = self._authors_for(conn, book_id)
-                book["tags"] = self._tags_for(conn, book_id)
-                book["series"] = self._series_for(conn, book_id)
-                book["formats"] = self._formats_for(conn, book_id)
+            bid = book["id"]
+            book["authors"] = authors_by_book.get(bid, [])
+            book["tags"] = tags_by_book.get(bid, [])
+            book["series"] = series_by_book.get(bid)
+            book["formats"] = formats_by_book.get(bid, [])
             books.append(self._to_summary(book))
         return books, total
 
@@ -395,6 +409,74 @@ class CalibreDB:
             last_scan=last_scan or datetime.now(UTC),
         )
 
+    def get_etag_token(self) -> str:
+        """Stable token reflecting the library's mutation state.
+
+        Used by routers to compute HTTP `ETag` headers. The token changes
+        only when (a) a book is added/removed (total_books changes) or
+        (b) the scanner completes a rescan (last_modified advances). Within
+        the same library state, all requests see the same token.
+        """
+        with self.connect() as conn:
+            total = conn.execute("SELECT COUNT(*) c FROM books").fetchone()["c"]
+            available = self._available_columns(conn, "books")
+            epoch = 0
+            if "last_modified" in available:
+                row = conn.execute(
+                    "SELECT MAX(last_modified) m FROM books"
+                ).fetchone()
+                last_modified = row["m"] if row else None
+                if last_modified:
+                    try:
+                        if "T" in last_modified:
+                            dt = datetime.fromisoformat(last_modified.replace("Z", "+00:00"))
+                        else:
+                            dt = datetime.fromisoformat(last_modified)
+                        epoch = int(dt.timestamp())
+                    except (ValueError, TypeError):
+                        epoch = 0
+        return f"{total}-{epoch}"
+
+    # -----------------------------------------------------------------------
+    # Async wrappers (Phase C4): every public method consumed by an async
+    # router is exposed as `a<method>` that delegates via asyncio.to_thread.
+    # The underlying sync methods stay unchanged for non-async callers (tests,
+    # alembic env, scanner iter_books).
+    # -----------------------------------------------------------------------
+    async def alist_books(self, **kwargs) -> tuple[list[BookSummary], int]:
+        """Async wrapper around list_books."""
+        return await asyncio.to_thread(self.list_books, **kwargs)
+
+    async def aget_book(self, book_id: int) -> dict | None:
+        return await asyncio.to_thread(self.get_book, book_id)
+
+    async def acount_books(self) -> int:
+        return await asyncio.to_thread(self.count_books)
+
+    async def aget_stats(self, last_scan: datetime | None = None) -> LibraryStats:
+        return await asyncio.to_thread(self.get_stats, last_scan)
+
+    async def alist_authors(self) -> list[BookAuthor]:
+        return await asyncio.to_thread(self.list_authors)
+
+    async def aget_author(self, author_id: int) -> BookAuthor | None:
+        return await asyncio.to_thread(self.get_author, author_id)
+
+    async def alist_tags(self) -> list[TagInfo]:
+        return await asyncio.to_thread(self.list_tags)
+
+    async def alist_series(self) -> list[SeriesInfo]:
+        return await asyncio.to_thread(self.list_series)
+
+    async def aget_series(self, series_id: int) -> SeriesInfo | None:
+        return await asyncio.to_thread(self.get_series, series_id)
+
+    async def aget_books_summaries(self, book_ids: list[int]) -> list[BookSummary]:
+        return await asyncio.to_thread(self.get_books_summaries, book_ids)
+
+    async def aget_etag_token(self) -> str:
+        return await asyncio.to_thread(self.get_etag_token)
+
     # -----------------------------------------------------------------------
     # File access
     # -----------------------------------------------------------------------
@@ -492,6 +574,138 @@ class CalibreDB:
         if not row:
             return None
         return SeriesInfo(id=row["id"], name=row["name"], sort=row["sort"])
+
+    def _authors_for_many(
+        self, conn: sqlite3.Connection, book_ids: list[int],
+    ) -> dict[int, list[BookAuthor]]:
+        if not book_ids:
+            return {}
+        placeholders = ",".join("?" for _ in book_ids)
+        rows = conn.execute(
+            f"SELECT bal.book AS book_id, a.id, a.name, a.sort "
+            f"FROM authors a "
+            f"JOIN books_authors_link bal ON bal.author = a.id "
+            f"WHERE bal.book IN ({placeholders}) ORDER BY bal.id",
+            book_ids,
+        ).fetchall()
+        out: dict[int, list[BookAuthor]] = {bid: [] for bid in book_ids}
+        for r in rows:
+            out[r["book_id"]].append(
+                BookAuthor(id=r["id"], name=r["name"], sort=r["sort"])
+            )
+        return out
+
+    def _tags_for_many(
+        self, conn: sqlite3.Connection, book_ids: list[int],
+    ) -> dict[int, list[TagInfo]]:
+        if not book_ids:
+            return {}
+        placeholders = ",".join("?" for _ in book_ids)
+        rows = conn.execute(
+            f"SELECT btl.book AS book_id, t.id, t.name "
+            f"FROM tags t "
+            f"JOIN books_tags_link btl ON btl.tag = t.id "
+            f"WHERE btl.book IN ({placeholders}) ORDER BY t.name",
+            book_ids,
+        ).fetchall()
+        out: dict[int, list[TagInfo]] = {bid: [] for bid in book_ids}
+        for r in rows:
+            out[r["book_id"]].append(TagInfo(id=r["id"], name=r["name"]))
+        return out
+
+    def _series_for_many(
+        self, conn: sqlite3.Connection, book_ids: list[int],
+    ) -> dict[int, SeriesInfo]:
+        if not book_ids:
+            return {}
+        placeholders = ",".join("?" for _ in book_ids)
+        rows = conn.execute(
+            f"SELECT bsl.book AS book_id, s.id, s.name, s.sort "
+            f"FROM series s "
+            f"JOIN books_series_link bsl ON bsl.series = s.id "
+            f"WHERE bsl.book IN ({placeholders})",
+            book_ids,
+        ).fetchall()
+        out: dict[int, SeriesInfo] = {}
+        for r in rows:
+            out[r["book_id"]] = SeriesInfo(
+                id=r["id"], name=r["name"], sort=r["sort"],
+            )
+        return out
+
+    def _formats_for_many(
+        self, conn: sqlite3.Connection, book_ids: list[int],
+    ) -> dict[int, list[BookFormat]]:
+        if not book_ids:
+            return {}
+        placeholders = ",".join("?" for _ in book_ids)
+        data_cols = self._available_columns(conn, "data")
+        want = [c for c in ("format", "name", "uncompressed_size", "mtime") if c in data_cols]
+        select = ", ".join(f"d.{c}" for c in want) if want else "d.format, d.name"
+        rows = conn.execute(
+            f"SELECT d.book AS book_id, {select} "
+            f"FROM data d WHERE d.book IN ({placeholders}) ORDER BY d.format",
+            book_ids,
+        ).fetchall()
+        out: dict[int, list[BookFormat]] = {bid: [] for bid in book_ids}
+        for r in rows:
+            mtime = None
+            if "mtime" in r.keys() and r["mtime"]:
+                try:
+                    mtime = datetime.fromisoformat(r["mtime"])
+                except (ValueError, TypeError):
+                    pass
+            out[r["book_id"]].append(
+                BookFormat(
+                    fmt=r["format"],
+                    path=r["name"] if "name" in r.keys() and r["name"] else "",
+                    size=r["uncompressed_size"] if "uncompressed_size" in r.keys() and r["uncompressed_size"] else 0,
+                    mtime=mtime,
+                )
+            )
+        return out
+
+    def get_books_summaries(self, book_ids: list[int]) -> list[BookSummary]:
+        """Batch-fetch summaries for an explicit list of book ids.
+
+        Used by /api/shelves/{id} where the book_ids come from the app DB
+        (ShelfBook or ReadingProgress) and we need lightweight summaries
+        (no comments / rating / identifiers / publisher). One round-trip per
+        related table — independent of `len(book_ids)` up to 100.
+        """
+        if not book_ids:
+            return []
+        # Preserve input order.
+        order = {bid: i for i, bid in enumerate(book_ids)}
+        with self.connect() as conn:
+            available = self._available_columns(conn, "books")
+            want = [c for c in (
+                "id", "title", "sort_title", "pubdate", "series_index",
+                "has_cover", "cover",
+            ) if c in available]
+            select = ", ".join(f"b.{c}" for c in want) if want else "b.*"
+            placeholders = ",".join("?" for _ in book_ids)
+            rows = conn.execute(
+                f"SELECT {select} FROM books b WHERE b.id IN ({placeholders})",
+                book_ids,
+            ).fetchall()
+            authors_by_book = self._authors_for_many(conn, book_ids)
+            tags_by_book = self._tags_for_many(conn, book_ids)
+            series_by_book = self._series_for_many(conn, book_ids)
+            formats_by_book = self._formats_for_many(conn, book_ids)
+
+        books_by_id: dict[int, BookSummary] = {}
+        for row in rows:
+            book = dict(row)
+            bid = book["id"]
+            book["authors"] = authors_by_book.get(bid, [])
+            book["tags"] = tags_by_book.get(bid, [])
+            book["series"] = series_by_book.get(bid)
+            book["formats"] = formats_by_book.get(bid, [])
+            books_by_id[bid] = self._to_summary(book)
+
+        # Return summaries in the same order as the input.
+        return [books_by_id[bid] for bid in book_ids if bid in books_by_id]
 
     def _formats_for(self, conn: sqlite3.Connection, book_id: int) -> list[BookFormat]:
         # Build query defensively based on actual columns
