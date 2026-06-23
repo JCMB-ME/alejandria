@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
   import { page } from '$app/stores';
   import type { BookDetail, Highlight } from '$api/types';
   import { readerTheme } from '$stores/auth';
   import { t } from '$stores/i18n';
   import { toast } from '$stores/toast';
   import HighlightItem from './HighlightItem.svelte';
+  import type { BookFormatType } from '$reader/types';
 
   interface Props {
     book: BookDetail | null;
@@ -46,7 +46,27 @@
      * EPUB doesn't show one because the virtual-page index isn't
      * wired into the highlight creation flow yet.
      */
-    bookFormatType: 'epub' | 'pdf' | 'cbz' | 'fb2' | 'rtf' | 'txt' | null;
+    bookFormatType: BookFormatType | null;
+    /**
+     * Phase D: consolidated action surface. Every callback the
+     * orchestrator wires. Replaces the previous mix of
+     * `createEventDispatcher` (for the toolbar's own events) and
+     * `onJumpToPage` / `onDeleteHighlight` / `onJumpToHighlight`
+     * props. The orchestrator can now wire every action via props
+     * of the same name; the toolbar never needs to know about the
+     * concrete controller.
+     */
+    onPrev: () => void;
+    onNext: () => void;
+    onFontSize: (delta: number) => void;
+    onFontFamily: (f: 'serif' | 'sans') => void;
+    onLineHeight: (lh: number) => void;
+    onTheme: (t: 'light' | 'sepia' | 'dark') => void;
+    onSaveHighlight: (color: string) => void;
+    onJumpToToc: (href: string) => void;
+    onClose: () => void;
+    onToggleToc: () => void;
+    onToggleHighlights: () => void;
     /** Feature 1: jump to a user-typed page number. */
     onJumpToPage: (n: number) => void;
     /** Feature 2: delete a saved highlight by id. */
@@ -59,10 +79,10 @@
     pageInputValue, pageInputTotal, pageInputDisabled,
     fontSize, fontFamily, lineHeight,
     toc, showToc, showHighlights, highlights, selectedCfi, bookFormatType,
+    onPrev, onNext, onFontSize, onFontFamily, onLineHeight, onTheme,
+    onSaveHighlight, onJumpToToc, onClose, onToggleToc, onToggleHighlights,
     onJumpToPage, onDeleteHighlight, onJumpToHighlight,
   }: Props = $props();
-
-  const dispatch = createEventDispatcher();
 
   // Plan 3 / H8: Export modal state. Hidden by default; toggled by the
   // export button in the highlights drawer header.
@@ -115,16 +135,16 @@
     row 2 carry the controls.
   -->
   <div class="h-14 flex items-center px-3 gap-2">
-    <button class="btn btn-ghost !p-2 touch-target" onclick={() => dispatch('close')} title={$t('back_to_book')} aria-label={$t('back_to_book')}>
+    <button class="btn btn-ghost !p-2 touch-target" onclick={() => onClose?.()} title={$t('back_to_book')} aria-label={$t('back_to_book')}>
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
     </button>
 
     <div class="flex-1 min-w-0 text-center">
       <div class="text-sm font-medium truncate">{book?.title || $t('reading_loading')}</div>
       <div class="text-xs text-[var(--text-soft)] flex items-center justify-center gap-1 min-w-0 overflow-x-auto whitespace-nowrap scrollbar-none">
-        <button class="hover:text-[var(--text)] touch-target shrink-0" onclick={() => dispatch('prev')} aria-label={$t('prev')}>‹ {$t('prev')}</button>
+        <button class="hover:text-[var(--text)] touch-target shrink-0" onclick={() => onPrev?.()} aria-label={$t('prev')}>‹ {$t('prev')}</button>
         <span class="whitespace-nowrap shrink-0">{currentPage} / {totalPages}</span>
-        <button class="hover:text-[var(--text)] touch-target shrink-0" onclick={() => dispatch('next')} aria-label={$t('next')}>{$t('next')} ›</button>
+        <button class="hover:text-[var(--text)] touch-target shrink-0" onclick={() => onNext?.()} aria-label={$t('next')}>{$t('next')} ›</button>
         <!--
           Feature 1: jump-to-page input + button. Sits between `› next`
           and the progress percentage so the visual order is
@@ -177,7 +197,7 @@
     <button
       class="btn btn-ghost !p-2 touch-target md:hidden"
       class:active={showToc}
-      onclick={() => dispatch('toggleToc')}
+      onclick={() => onToggleToc?.()}
       title={$t('toc')}
       aria-label={$t('toc')}
     >
@@ -186,7 +206,7 @@
     <button
       class="btn btn-ghost !p-2 touch-target md:hidden"
       class:active={showHighlights}
-      onclick={() => dispatch('toggleHighlights')}
+      onclick={() => onToggleHighlights?.()}
       title={$t('highlights')}
       aria-label={$t('highlights')}
     >
@@ -206,9 +226,9 @@
     see the version below.
   -->
   <div class="h-12 flex items-center px-3 gap-1 overflow-x-auto md:hidden border-t" style="border-color: var(--border);">
-    <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => dispatch('fontSize', -2)} title={$t('smaller_text')} aria-label={$t('smaller_text')}>A-</button>
+    <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => onFontSize?.(-2)} title={$t('smaller_text')} aria-label={$t('smaller_text')}>A-</button>
     <span class="text-xs w-9 text-center shrink-0">{fontSize}</span>
-    <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => dispatch('fontSize', 2)} title={$t('larger_text')} aria-label={$t('larger_text')}>A+</button>
+    <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => onFontSize?.(2)} title={$t('larger_text')} aria-label={$t('larger_text')}>A+</button>
 
     <div class="w-px h-6 bg-[var(--border)] shrink-0"></div>
 
@@ -216,7 +236,7 @@
       <button
         class="btn btn-ghost !p-2 touch-target shrink-0"
         class:active={$readerTheme === tVal}
-        onclick={() => dispatch('theme', tVal)}
+        onclick={() => onTheme?.(tVal)}
         title={tVal}
         aria-label={tVal}
       >
@@ -232,14 +252,14 @@
 
     <div class="w-px h-6 bg-[var(--border)] shrink-0"></div>
 
-    <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => dispatch('fontFamily', fontFamily === 'serif' ? 'sans' : 'serif')} title={$t('font_family')} aria-label={$t('font_family')}>
+    <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => onFontFamily?.(fontFamily === 'serif' ? 'sans' : 'serif')} title={$t('font_family')} aria-label={$t('font_family')}>
       <span class="font-serif text-sm">Aa</span>
     </button>
 
     <button
       class="btn btn-ghost !p-2 touch-target shrink-0"
       disabled={!selectedCfi}
-      onclick={() => dispatch('saveHighlight', 'yellow')}
+      onclick={() => onSaveHighlight?.('yellow')}
       title={$t('highlight_selection')}
       aria-label={$t('highlight_selection')}
     >
@@ -253,15 +273,15 @@
     so desktop UX is unchanged.
   -->
   <div class="hidden md:flex h-12 items-center px-3 gap-2 overflow-x-auto border-t" style="border-color: var(--border);">
-    <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => dispatch('toggleToc')} title={$t('toc')} aria-label={$t('toc')}>
+    <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => onToggleToc?.()} title={$t('toc')} aria-label={$t('toc')}>
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
     </button>
     <div class="flex items-center gap-0.5 shrink-0">
-      <button class="btn btn-ghost !p-2 touch-target" onclick={() => dispatch('fontSize', -2)} title={$t('smaller_text')} aria-label={$t('smaller_text')}>A-</button>
+      <button class="btn btn-ghost !p-2 touch-target" onclick={() => onFontSize?.(-2)} title={$t('smaller_text')} aria-label={$t('smaller_text')}>A-</button>
       <span class="text-xs w-7 text-center">{fontSize}</span>
-      <button class="btn btn-ghost !p-2 touch-target" onclick={() => dispatch('fontSize', 2)} title={$t('larger_text')} aria-label={$t('larger_text')}>A+</button>
+      <button class="btn btn-ghost !p-2 touch-target" onclick={() => onFontSize?.(2)} title={$t('larger_text')} aria-label={$t('larger_text')}>A+</button>
     </div>
-    <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => dispatch('fontFamily', fontFamily === 'serif' ? 'sans' : 'serif')} title={$t('font_family')} aria-label={$t('font_family')}>
+    <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => onFontFamily?.(fontFamily === 'serif' ? 'sans' : 'serif')} title={$t('font_family')} aria-label={$t('font_family')}>
       <span class="font-serif text-sm">Aa</span>
     </button>
     <div class="flex items-center gap-0.5 shrink-0">
@@ -269,7 +289,7 @@
         <button
           class="btn btn-ghost !p-2 touch-target"
           class:active={$readerTheme === tVal}
-          onclick={() => dispatch('theme', tVal)}
+          onclick={() => onTheme?.(tVal)}
           title={tVal}
           aria-label={tVal}
         >
@@ -283,7 +303,7 @@
         </button>
       {/each}
     </div>
-    <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => dispatch('toggleHighlights')} title={$t('highlights')} aria-label={$t('highlights')}>
+    <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => onToggleHighlights?.()} title={$t('highlights')} aria-label={$t('highlights')}>
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
     </button>
     {#if highlights.length}
@@ -292,7 +312,7 @@
     <button
       class="btn btn-ghost !p-2 touch-target shrink-0"
       disabled={!selectedCfi}
-      onclick={() => dispatch('saveHighlight', 'yellow')}
+      onclick={() => onSaveHighlight?.('yellow')}
       title={$t('highlight_selection')}
       aria-label={$t('highlight_selection')}
     >
@@ -312,8 +332,8 @@
     class="fixed inset-0 bg-black/40 z-[5] md:hidden"
     aria-label="Close panel"
     onclick={() => {
-      if (showToc) dispatch('toggleToc');
-      if (showHighlights) dispatch('toggleHighlights');
+      if (showToc) onToggleToc?.();
+      if (showHighlights) onToggleHighlights?.();
     }}
   ></button>
 {/if}
@@ -327,7 +347,7 @@
   >
     <div class="flex items-center justify-between mb-3 gap-2">
       <h3 class="font-semibold text-sm">{$t('toc')}</h3>
-      <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => dispatch('toggleToc')} aria-label={$t('close')}>
+      <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => onToggleToc?.()} aria-label={$t('close')}>
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -342,7 +362,7 @@
           <button
             type="button"
             class="block w-full text-left py-2 px-2 rounded hover:bg-[var(--elevated)] touch-target"
-            onclick={() => dispatch('jumpToToc', item.href)}
+            onclick={() => onJumpToToc?.(item.href)}
           >
             {item.label}
           </button>
@@ -383,7 +403,7 @@
             </svg>
           </button>
         {/if}
-        <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => dispatch('toggleHighlights')} aria-label={$t('close')}>
+        <button class="btn btn-ghost !p-2 touch-target shrink-0" onclick={() => onToggleHighlights?.()} aria-label={$t('close')}>
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
