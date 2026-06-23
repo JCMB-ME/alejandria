@@ -30,6 +30,12 @@ from alejandria.schemas.book import (
     SeriesInfo,
     TagInfo,
 )
+from alejandria.schemas.filters import (
+    AuthorCount,
+    NameCount,
+    SeriesCount,
+    TagCount,
+)
 from alejandria.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -229,10 +235,20 @@ class CalibreDB:
         author_id: int | None = None,
         tag_id: int | None = None,
         series_id: int | None = None,
+        format: str | None = None,  # noqa: A002 (API contract: `format` is the wire field name)
+        language: str | None = None,
+        added_after: str | None = None,
+        added_before: str | None = None,
         sort: str = "sort_title",
         order: str = "asc",
+        user_id: int | None = None,
     ) -> tuple[list[BookSummary], int]:
-        """List books with filters + pagination."""
+        """List books with filters + pagination.
+
+        Plan 2 additions: format, language, added_after, added_before filters
+        and last_read/progress sort. The last_read/progress sorts require a
+        second pass in the app DB (ReadingProgress); the rest stays in SQL.
+        """
         where: list[str] = []
         params: list[Any] = []
         joins: list[str] = []
@@ -260,18 +276,45 @@ class CalibreDB:
             joins.append("LEFT JOIN books_series_link bsl ON bsl.book = b.id")
             params.append(series_id)
 
+        if format is not None:
+            where.append("UPPER(d.format) = ?")
+            joins.append("LEFT JOIN data d ON d.book = b.id")
+            params.append(format.upper())
+
+        if language is not None:
+            where.append("l.lang_code = ?")
+            joins.append("LEFT JOIN books_languages_link bll ON bll.book = b.id")
+            joins.append("LEFT JOIN languages l ON l.id = bll.lang_code")
+            params.append(language)
+
+        if added_after is not None:
+            where.append("b.timestamp >= ?")
+            params.append(added_after)
+
+        if added_before is not None:
+            where.append("b.timestamp <= ?")
+            params.append(added_before)
+
         where_sql = "WHERE " + " AND ".join(where) if where else ""
         join_sql = " ".join(dict.fromkeys(joins))  # dedupe, preserve order
 
         allowed_sorts = {
             "id", "title", "sort_title", "timestamp", "pubdate", "last_modified",
-            "series_index", "rating",
+            "series_index", "rating", "last_read", "progress",
         }
         if sort not in allowed_sorts:
             sort = "sort_title"
         order = "DESC" if order.lower() == "desc" else "ASC"
 
         offset = (page - 1) * page_size
+
+        # last_read / progress sorts need a second pass in the app DB.
+        if sort in ("last_read", "progress") and user_id is not None:
+            return self._list_books_appdb_sorted(
+                page=page, page_size=page_size,
+                where_sql=where_sql, join_sql=join_sql, params=params,
+                sort=sort, order=order, user_id=user_id,
+            )
 
         # Get total + rows. Be defensive about sort column existence.
         with self.connect() as conn:
@@ -310,10 +353,169 @@ class CalibreDB:
             books.append(self._to_summary(book))
         return books, total
 
+    def _list_books_appdb_sorted(
+        self,
+        *,
+        page: int,
+        page_size: int,
+        where_sql: str,
+        join_sql: str,
+        params: list[Any],
+        sort: str,
+        order: str,
+        user_id: int,
+    ) -> tuple[list[BookSummary], int]:
+        """For last_read/progress sort, get the page from Calibre filtered,
+        then re-order by an app-DB read against reading_progress.
+        """
+        from sqlalchemy import func, select
+
+        from alejandria.db import SessionLocal
+        from alejandria.models.progress import ReadingProgress
+
+        offset = (page - 1) * page_size
+        with self.connect() as conn:
+            count_sql = f"SELECT COUNT(DISTINCT b.id) AS total FROM books b {join_sql} {where_sql}"
+            total = conn.execute(count_sql, params).fetchone()["total"]
+            sql = (
+                f"SELECT b.id FROM books b {join_sql} {where_sql} "
+                f"GROUP BY b.id"
+            )
+            rows = conn.execute(sql, params).fetchall()
+            all_ids = [r["id"] for r in rows]
+
+        if not all_ids:
+            return [], 0
+
+        engine = SessionLocal()
+        try:
+            sort_col = (
+                func.max(ReadingProgress.last_read_at)
+                if sort == "last_read"
+                else func.max(ReadingProgress.progress_pct)
+            )
+            stmt = (
+                select(ReadingProgress.book_id, sort_col.label("v"))
+                .where(
+                    ReadingProgress.user_id == user_id,
+                    ReadingProgress.book_id.in_(all_ids),
+                )
+                .group_by(ReadingProgress.book_id)
+            )
+            progress_rows = engine.execute(stmt).fetchall()
+            progress_map = {r.book_id: r.v for r in progress_rows}
+        finally:
+            engine.close()
+
+        # Sort: books WITH progress first (or last depending on order),
+        # then by the chosen value, then by sort_title for stability.
+        def _key(bid: int) -> tuple[int, float, str]:
+            v = progress_map.get(bid)
+            if v is None:
+                # Books without progress sort to the END regardless of order
+                # (they have no reading time). Sentinel 0/1 here so they
+                # always trail; this is the established UX.
+                missing_rank = 1  # larger than any real value
+                return (missing_rank, 0.0, "")
+            # has progress — rank 0 (sorts before missing)
+            if sort == "last_read":
+                # last_read_at is a timestamp/datetime; convert to float
+                try:
+                    v_num = float(v.timestamp()) if hasattr(v, "timestamp") else float(v)
+                except (ValueError, TypeError, AttributeError):
+                    v_num = 0.0
+            else:
+                v_num = float(v)
+            return (0, v_num, "")
+
+        sorted_ids = sorted(all_ids, key=_key, reverse=(order == "DESC"))
+        page_ids = sorted_ids[offset:offset + page_size]
+
+        # Build BookSummary list from the page ids (preserve the appdb order).
+        if not page_ids:
+            return [], total
+
+        with self.connect() as conn:
+            authors_by_book = self._authors_for_many(conn, page_ids)
+            tags_by_book = self._tags_for_many(conn, page_ids)
+            series_by_book = self._series_for_many(conn, page_ids)
+            formats_by_book = self._formats_for_many(conn, page_ids)
+            placeholders = ",".join("?" for _ in page_ids)
+            rows = conn.execute(
+                f"SELECT * FROM books WHERE id IN ({placeholders})",
+                page_ids,
+            ).fetchall()
+        rows_by_id = {r["id"]: r for r in rows}
+
+        books: list[BookSummary] = []
+        for bid in page_ids:
+            row = rows_by_id.get(bid)
+            if not row:
+                continue
+            book = dict(row)
+            book["authors"] = authors_by_book.get(bid, [])
+            book["tags"] = tags_by_book.get(bid, [])
+            book["series"] = series_by_book.get(bid)
+            book["formats"] = formats_by_book.get(bid, [])
+            books.append(self._to_summary(book))
+        return books, total
+
     def search_books(self, query: str, limit: int = 50) -> list[BookSummary]:
         """Full-text-like search across title, authors, tags, series."""
         books, _ = self.list_books(search=query, page_size=limit)
         return books
+
+    # -----------------------------------------------------------------------
+    # Filter options (Plan 2 - Library Filters)
+    # -----------------------------------------------------------------------
+    def list_authors_with_counts(self) -> list[AuthorCount]:
+        """Authors with their book count, ordered by count desc."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT a.id, a.name, COUNT(bal.book) AS c "
+                "FROM authors a LEFT JOIN books_authors_link bal ON bal.author = a.id "
+                "GROUP BY a.id ORDER BY c DESC, a.sort COLLATE NOCASE"
+            ).fetchall()
+        return [AuthorCount(id=r["id"], name=r["name"], count=r["c"]) for r in rows]
+
+    def list_tags_with_counts(self) -> list[TagCount]:
+        """Tags with their book count, ordered by count desc."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT t.id, t.name, COUNT(btl.book) AS c "
+                "FROM tags t LEFT JOIN books_tags_link btl ON btl.tag = t.id "
+                "GROUP BY t.id ORDER BY c DESC, t.name COLLATE NOCASE"
+            ).fetchall()
+        return [TagCount(id=r["id"], name=r["name"], count=r["c"]) for r in rows]
+
+    def list_series_with_counts(self) -> list[SeriesCount]:
+        """Series with their book count, ordered by count desc."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT s.id, s.name, COUNT(bsl.book) AS c "
+                "FROM series s LEFT JOIN books_series_link bsl ON bsl.series = s.id "
+                "GROUP BY s.id ORDER BY c DESC, s.sort COLLATE NOCASE"
+            ).fetchall()
+        return [SeriesCount(id=r["id"], name=r["name"], count=r["c"]) for r in rows]
+
+    def list_formats_with_counts(self) -> list[NameCount]:
+        """Available formats with their book count, ordered by count desc."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT UPPER(format) AS name, COUNT(DISTINCT book) AS c "
+                "FROM data GROUP BY UPPER(format) ORDER BY c DESC"
+            ).fetchall()
+        return [NameCount(name=r["name"], count=r["c"]) for r in rows]
+
+    def list_languages_with_counts(self) -> list[NameCount]:
+        """Available languages with their book count, ordered by count desc."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT l.lang_code AS name, COUNT(DISTINCT bll.book) AS c "
+                "FROM languages l LEFT JOIN books_languages_link bll ON bll.lang_code = l.id "
+                "GROUP BY l.id ORDER BY c DESC"
+            ).fetchall()
+        return [NameCount(name=r["name"], count=r["c"]) for r in rows]
 
     # -----------------------------------------------------------------------
     # Authors
@@ -476,6 +678,21 @@ class CalibreDB:
 
     async def aget_etag_token(self) -> str:
         return await asyncio.to_thread(self.get_etag_token)
+
+    async def alist_authors_with_counts(self) -> list[AuthorCount]:
+        return await asyncio.to_thread(self.list_authors_with_counts)
+
+    async def alist_tags_with_counts(self) -> list[TagCount]:
+        return await asyncio.to_thread(self.list_tags_with_counts)
+
+    async def alist_series_with_counts(self) -> list[SeriesCount]:
+        return await asyncio.to_thread(self.list_series_with_counts)
+
+    async def alist_formats_with_counts(self) -> list[NameCount]:
+        return await asyncio.to_thread(self.list_formats_with_counts)
+
+    async def alist_languages_with_counts(self) -> list[NameCount]:
+        return await asyncio.to_thread(self.list_languages_with_counts)
 
     # -----------------------------------------------------------------------
     # File access

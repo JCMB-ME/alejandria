@@ -10,6 +10,9 @@ export default defineConfig({
       $stores: path.resolve(__dirname, 'src/lib/stores'),
       $api: path.resolve(__dirname, 'src/lib/api'),
       $reader: path.resolve(__dirname, 'src/lib/reader'),
+      // Stub SvelteKit-only modules so unit tests (no SvelteKit runtime)
+      // can import store files that reference them.
+      $app: path.resolve(__dirname, 'src/lib/__mocks__/sveltekit-app'),
     },
   },
   test: {

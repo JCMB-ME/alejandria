@@ -145,6 +145,7 @@ export const auth = {
 // --- Library ---
 export const library = {
   stats: () => api.get<Types.LibraryStats>('/api/library/stats'),
+  filters: () => api.get<Types.FilterOptions>('/api/library/filters'),
   authors: () => api.get<Types.BookAuthor[]>('/api/library/authors'),
   author: (id: number) => api.get<{ id: number; name: string; books: Types.BookSummary[] }>(`/api/library/authors/${id}`),
   tags: () => api.get<Types.TagInfo[]>('/api/library/tags'),
@@ -164,6 +165,10 @@ export const books = {
     author?: number;
     tag?: number;
     series?: number;
+    format?: string;
+    language?: string;
+    added_after?: string;
+    added_before?: string;
     sort?: string;
     order?: 'asc' | 'desc';
   } = {}) => {
@@ -183,6 +188,19 @@ export const books = {
   update: (id: number, formData: FormData) =>
     api.putForm<Types.BookDetail>(`/api/books/${id}`, formData),
   delete: (id: number) => api.delete<void>(`/api/books/${id}`),
+  // Bulk operations (Plan 2)
+  bulkAddToShelf: (req: Types.BulkShelfRequest) =>
+    api.post<Types.BulkResult>('/api/books/bulk/add-to-shelf', req),
+  bulkRemoveFromShelf: (req: Types.BulkShelfRequest) =>
+    api.post<Types.BulkResult>('/api/books/bulk/remove-from-shelf', req),
+  bulkDelete: (req: Types.BulkDeleteRequest) =>
+    api.post<Types.BulkResult>('/api/books/bulk/delete', req),
+  bulkSetTags: (req: Types.BulkTagsRequest) =>
+    api.post<Types.BulkResult>('/api/books/bulk/set-tags', req),
+  bulkAddTags: (req: Types.BulkTagsRequest) =>
+    api.post<Types.BulkResult>('/api/books/bulk/add-tags', req),
+  bulkRemoveTags: (req: Types.BulkTagsRequest) =>
+    api.post<Types.BulkResult>('/api/books/bulk/remove-tags', req),
 };
 
 // --- Reader ---

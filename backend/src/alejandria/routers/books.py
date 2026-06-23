@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+from datetime import date
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from sqlalchemy.orm import Session
 
-from alejandria.auth.dependencies import get_current_user, get_optional_user
+from alejandria.auth.dependencies import get_current_user, get_optional_user  # noqa: F401
 from alejandria.config import get_settings
 from alejandria.db import get_db
 from alejandria.models.annotation import Annotation
@@ -34,14 +35,21 @@ async def list_books(
     request: Request,
     response: Response,
     db: Annotated[Session, Depends(get_db)],
-    user: Annotated[User | None, Depends(get_optional_user)],
+    user: Annotated[User, Depends(get_current_user)],
     page: int = Query(1, ge=1),
     page_size: int = Query(24, ge=1, le=100),
     search: str | None = None,
     author: int | None = None,
     tag: int | None = None,
     series: int | None = None,
-    sort: str = Query("sort_title", pattern=r"^(id|title|sort_title|timestamp|pubdate|last_modified|series_index)$"),
+    format: str | None = Query(None, pattern=r"^[A-Z0-9]{2,5}$"),
+    language: str | None = Query(None, max_length=8),
+    added_after: date | None = Query(None),
+    added_before: date | None = Query(None),
+    sort: str = Query(
+        "sort_title",
+        pattern=r"^(id|title|sort_title|timestamp|pubdate|last_modified|series_index|rating|last_read|progress)$",
+    ),
     order: str = Query("asc", pattern=r"^(asc|desc)$"),
 ) -> BookListResponse | Response:
     """List books in the library with optional filters and pagination."""
@@ -49,7 +57,11 @@ async def list_books(
     items, total = await calibre.alist_books(
         page=page, page_size=page_size, search=search,
         author_id=author, tag_id=tag, series_id=series,
+        format=format, language=language,
+        added_after=added_after.isoformat() if added_after else None,
+        added_before=added_before.isoformat() if added_before else None,
         sort=sort, order=order,
+        user_id=user.id,
     )
     etag_token = await calibre.aget_etag_token()
     etag = f'W/"{total}-{etag_token}"'

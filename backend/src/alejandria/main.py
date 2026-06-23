@@ -23,6 +23,7 @@ from alejandria.middleware.security_headers import (
 from alejandria.routers import (
     auth,
     books,
+    bulk,
     conversion,
     health,
     highlights,
@@ -149,6 +150,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
     app.include_router(library.router, prefix="/api/library", tags=["library"])
     app.include_router(books.router, prefix="/api/books", tags=["books"])
+    app.include_router(bulk.router, prefix="/api/books/bulk", tags=["books-bulk"])
     app.include_router(reader.router, prefix="/api/reader", tags=["reader"])
     app.include_router(conversion.router, prefix="/api/convert", tags=["convert"])
     app.include_router(kindle.router, prefix="/api/kindle", tags=["kindle"])

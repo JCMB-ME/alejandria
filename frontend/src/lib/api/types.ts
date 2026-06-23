@@ -223,3 +223,49 @@ export interface AdapterTestResult {
   next_candidates: AdapterNextCandidate[];
   adapter_used: string;
 }
+
+// --- Library filters (Plan 2) ---
+
+export interface AuthorCount {
+  id: number;
+  name: string;
+  count: number;
+}
+export interface TagCount {
+  id: number;
+  name: string;
+  count: number;
+}
+export interface SeriesCount {
+  id: number;
+  name: string;
+  count: number;
+}
+export interface NameCount {
+  name: string;
+  count: number;
+}
+export interface FilterOptions {
+  authors: AuthorCount[];
+  tags: TagCount[];
+  series: SeriesCount[];
+  formats: NameCount[];
+  languages: NameCount[];
+}
+
+export interface BulkShelfRequest {
+  book_ids: number[];
+  shelf_id: number;
+}
+export interface BulkTagsRequest {
+  book_ids: number[];
+  tags: string[];
+}
+export interface BulkDeleteRequest {
+  book_ids: number[];
+}
+export interface BulkResult {
+  affected: number;
+  failed?: number;
+  skipped?: number;
+}

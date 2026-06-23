@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Annotated
 
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from alejandria.auth.dependencies import get_optional_user
+from alejandria.auth.dependencies import get_current_user, get_optional_user
 from alejandria.models.user import User
 from alejandria.schemas.book import LibraryStats, SeriesInfo, TagInfo
+from alejandria.schemas.filters import FilterOptions
 from alejandria.services.calibre_db import get_calibre_db
 from alejandria.services.scanner import get_scanner
 
@@ -29,6 +31,40 @@ async def library_stats(request: Request, response: Response) -> Response | Libr
     response.headers["ETag"] = etag
     response.headers["Cache-Control"] = "private, max-age=60"
     return stats
+
+
+@router.get("/filters", response_model=FilterOptions)
+async def library_filters(
+    request: Request,
+    response: Response,
+    user: Annotated[User, Depends(get_current_user)],
+) -> Response | FilterOptions:
+    """Return the available filter values with counts, for the library page UI.
+
+    ETag-based caching: if the books table's max timestamp is unchanged,
+    subsequent calls return 304. Cache-Control: public, max-age=600.
+    """
+    calibre = get_calibre_db()
+    etag_token = await calibre.aget_etag_token()
+    etag = f'W/"{hashlib.md5(etag_token.encode()).hexdigest()}"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    authors, tags, series, formats, languages = await asyncio.gather(
+        calibre.alist_authors_with_counts(),
+        calibre.alist_tags_with_counts(),
+        calibre.alist_series_with_counts(),
+        calibre.alist_formats_with_counts(),
+        calibre.alist_languages_with_counts(),
+    )
+    response.headers["ETag"] = etag
+    response.headers["Cache-Control"] = "public, max-age=600"
+    return FilterOptions(
+        authors=authors,
+        tags=tags,
+        series=series,
+        formats=formats,
+        languages=languages,
+    )
 
 
 @router.get("/authors")
