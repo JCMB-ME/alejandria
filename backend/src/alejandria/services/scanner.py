@@ -28,9 +28,16 @@ class LibraryScanner:
         self._observer: Observer | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._lock = threading.Lock()
+        self._op_lock: asyncio.Lock | None = None  # created lazily on first use
         self._last_scan: datetime | None = None
         self._scanning = False
         self._library_root = get_settings().library_path
+
+    def _get_op_lock(self) -> asyncio.Lock:
+        """Lazily create the asyncio.Lock (must be in a running loop)."""
+        if self._op_lock is None:
+            self._op_lock = asyncio.Lock()
+        return self._op_lock
 
     def start(self) -> None:
         """Start watching the library directory."""
@@ -125,73 +132,112 @@ class LibraryScanner:
         but the actual book we matched is the existing one — its id appears
         in the stderr preamble of the same line.
         """
-        settings = get_settings()
-        calibre_bin = settings.calibre_bin_path
-        cmd = [
-            calibre_bin.replace("calibredb", "calibredb"), "add",
-            "--automerge", "overwrite",
-            "--library-path", str(self._library_root),
-            str(file_path),
-        ]
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await proc.communicate()
-            return {
-                "exit_code": proc.returncode,
-                "stdout": stdout.decode("utf-8", errors="ignore"),
-                "stderr": stderr.decode("utf-8", errors="ignore"),
-            }
-        except FileNotFoundError:
-            return {"exit_code": -1, "error": "calibredb not found"}
+        async with self._get_op_lock():
+            settings = get_settings()
+            calibre_bin = settings.calibre_bin_path
+            cmd = [
+                calibre_bin.replace("calibredb", "calibredb"), "add",
+                "--automerge", "overwrite",
+                "--library-path", str(self._library_root),
+                str(file_path),
+            ]
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await proc.communicate()
+                stdout_text = stdout.decode("utf-8", errors="ignore")
+                stderr_text = stderr.decode("utf-8", errors="ignore")
+                # B9: if we matched an existing record (re-upload), invalidate
+                # its conversion cache so a stale EPUB doesn't get served.
+                self._maybe_invalidate_cache_from_output(stdout_text)
+                return {
+                    "exit_code": proc.returncode,
+                    "stdout": stdout_text,
+                    "stderr": stderr_text,
+                }
+            except FileNotFoundError:
+                return {"exit_code": -1, "error": "calibredb not found"}
 
     async def remove_book(self, book_id: int) -> bool:
         """Remove a book from the library."""
-        settings = get_settings()
-        calibre_bin = settings.calibre_bin_path
-        cmd = [
-            calibre_bin.replace("calibredb", "calibredb"), "remove",
-            "--library-path", str(self._library_root),
-            str(book_id),
-        ]
-        try:
-            proc = await asyncio.create_subprocess_exec(*cmd)
-            await proc.communicate()
-            return proc.returncode == 0
-        except FileNotFoundError:
-            return False
+        async with self._get_op_lock():
+            settings = get_settings()
+            calibre_bin = settings.calibre_bin_path
+            cmd = [
+                calibre_bin.replace("calibredb", "calibredb"), "remove",
+                "--library-path", str(self._library_root),
+                str(book_id),
+            ]
+            try:
+                proc = await asyncio.create_subprocess_exec(*cmd)
+                await proc.communicate()
+                return proc.returncode == 0
+            except FileNotFoundError:
+                return False
 
     async def update_metadata(self, book_id: int, fields: dict[str, Any]) -> dict[str, Any]:
         """Update metadata for a book in the library using calibredb."""
-        settings = get_settings()
-        calibre_bin = settings.calibre_bin_path
-        cmd = [
-            calibre_bin.replace("calibredb", "calibredb"), "set_metadata",
-            "--library-path", str(self._library_root),
-        ]
-        for key, val in fields.items():
-            if val is None:
-                val = ""
-            cmd.extend(["-f", f"{key}:{val}"])
-        cmd.append(str(book_id))
+        async with self._get_op_lock():
+            settings = get_settings()
+            calibre_bin = settings.calibre_bin_path
+            cmd = [
+                calibre_bin.replace("calibredb", "calibredb"), "set_metadata",
+                "--library-path", str(self._library_root),
+            ]
+            for key, val in fields.items():
+                if val is None:
+                    val = ""
+                cmd.extend(["-f", f"{key}:{val}"])
+            cmd.append(str(book_id))
 
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await proc.communicate()
+                return {
+                    "exit_code": proc.returncode,
+                    "stdout": stdout.decode("utf-8", errors="ignore"),
+                    "stderr": stderr.decode("utf-8", errors="ignore"),
+                }
+            except FileNotFoundError:
+                return {"exit_code": -1, "error": "calibredb not found"}
+
+    @staticmethod
+    def _maybe_invalidate_cache_from_output(stdout_text: str) -> None:
+        """B9: if calibredb reported an add/update for a known id, invalidate
+        that book's conversion cache.
+
+        The regex is intentionally loose — Calibre's stdout wording has
+        changed across versions. If parsing fails, we silently skip; the
+        next rescan or manual ``rm -rf /config/caches/conversions/<id>``
+        will catch it.
+        """
+        import re
+        m = re.search(r"(?:añadidos|actualizados|added|updated).*?(\d+)", stdout_text)
+        if not m:
+            return
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await proc.communicate()
-            return {
-                "exit_code": proc.returncode,
-                "stdout": stdout.decode("utf-8", errors="ignore"),
-                "stderr": stderr.decode("utf-8", errors="ignore"),
-            }
-        except FileNotFoundError:
-            return {"exit_code": -1, "error": "calibredb not found"}
+            book_id = int(m.group(1))
+        except (TypeError, ValueError):
+            return
+        try:
+            from alejandria.services.conversion_cache import invalidate_book_cache
+            freed = invalidate_book_cache(book_id)
+            if freed:
+                logger.info(
+                    "conversion_cache_invalidated",
+                    book_id=book_id, bytes_freed=freed,
+                )
+        except Exception as e:
+            # Cache invalidation failure must never break an add.
+            logger.warning("conversion_cache_invalidation_failed",
+                           book_id=book_id, error=str(e))
 
 
 class _LibraryEventHandler(FileSystemEventHandler):
@@ -228,18 +274,14 @@ class _LibraryEventHandler(FileSystemEventHandler):
                     self.scanner.add_book(path), self._loop
                 )
             else:
-                # Fallback: run synchronously via subprocess
-                import subprocess
-                settings = get_settings()
-                cmd = [
-                    settings.calibre_bin_path, "add",
-                    "--library-path", str(self.scanner._library_root),
-                    str(path),
-                ]
-                try:
-                    subprocess.run(cmd, check=False, timeout=60)
-                except Exception as e:
-                    logger.error("scanner_add_failed", path=str(path), error=str(e))
+                # No event loop bound — the app is shutting down or hasn't
+                # finished startup. Log loudly and skip; the file will be
+                # picked up on the next rescan or manual `calibredb add`.
+                logger.warning(
+                    "scanner_no_event_loop",
+                    path=str(path),
+                    hint="Likely shutting down; book will be picked up on next rescan.",
+                )
 
     def on_deleted(self, event: FileSystemEvent) -> None:
         logger.info("library_file_deleted", path=event.src_path)
