@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -15,8 +15,8 @@ from alejandria.schemas.highlight import (
     HighlightCreate,
     HighlightUpdate,
 )
-
 from alejandria.utils.log import get_logger
+
 logger = get_logger(__name__)
 
 
@@ -47,7 +47,7 @@ class HighlightService:
             return None
         for field, value in data.model_dump(exclude_unset=True).items():
             setattr(h, field, value)
-        h.updated_at = datetime.now(timezone.utc)
+        h.updated_at = datetime.now(UTC)
         db.commit()
         db.refresh(h)
         return h
@@ -92,7 +92,7 @@ class HighlightService:
             return None
         for field, value in data.model_dump(exclude_unset=True).items():
             setattr(a, field, value)
-        a.updated_at = datetime.now(timezone.utc)
+        a.updated_at = datetime.now(UTC)
         db.commit()
         db.refresh(a)
         return a

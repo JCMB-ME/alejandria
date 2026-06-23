@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from pathlib import Path
 
 from alejandria.config import get_settings
 from alejandria.services.calibre_db import get_calibre_db
-
 from alejandria.utils.log import get_logger
+
 logger = get_logger(__name__)
 
 # Formats that can be rendered directly in browser (no conversion needed)
@@ -110,7 +109,7 @@ async def convert(
         if cache.exists():
             logger.info("conversion_done", book_id=book_id, target=target, size=cache.stat().st_size)
             return cache
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.error("conversion_timeout", book_id=book_id)
     except FileNotFoundError:
         logger.error("ebook_convert_not_found")

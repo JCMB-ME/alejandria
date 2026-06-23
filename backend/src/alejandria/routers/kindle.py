@@ -6,11 +6,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
 from alejandria.auth.dependencies import get_current_user
 from alejandria.config import get_settings
-from alejandria.db import get_db
 from alejandria.models.user import User
 from alejandria.services.calibre_db import get_calibre_db
 from alejandria.services.smtp import SMTPService

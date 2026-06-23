@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -22,7 +22,7 @@ class JobRateLimiter:
 
     def check(self, db: Session, user_id: int) -> None:
         """Raise HTTPException(429) if the user has >= N jobs in the last hour."""
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
+        cutoff = datetime.now(UTC) - timedelta(hours=1)
         stmt = (
             select(func.count(ScrapeJob.id))
             .where(ScrapeJob.user_id == user_id, ScrapeJob.created_at >= cutoff)

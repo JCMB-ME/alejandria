@@ -73,15 +73,17 @@ def validate_url(url: str, *, allow_loopback: bool = False) -> str:
 
     Args:
         url: The user-supplied URL.
-        allow_loopback: When True (used by tests), 127.0.0.0/8 / ::1 are
-            permitted. Production code MUST keep this False.
+        allow_loopback: When True (used by tests that spin up a local
+            aiohttp fixture on 127.0.0.1), 127.0.0.0/8 and ::1 are
+            permitted. All other private/loopback/link-local/CGNAT/etc.
+            ranges remain blocked. Production code MUST keep this False.
     """
     if not url:
         raise ValueError("URL is empty")
 
     try:
         parts = urlsplit(url.strip())
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise ValueError(f"Invalid URL: {e}") from e
 
     if parts.scheme.lower() not in _ALLOWED_SCHEMES:
@@ -94,11 +96,22 @@ def validate_url(url: str, *, allow_loopback: bool = False) -> str:
     if not host:
         raise ValueError("URL has no host")
 
+    def _is_loopback(ip_obj: ipaddress._BaseAddress) -> bool:
+        return (
+            isinstance(ip_obj, ipaddress.IPv4Address)
+            and ip_obj in ipaddress.IPv4Network("127.0.0.0/8")
+        ) or (
+            isinstance(ip_obj, ipaddress.IPv6Address)
+            and ip_obj in ipaddress.IPv6Network("::1/128")
+        )
+
     # If the host is already an IP literal, we can evaluate it directly
     # without DNS resolution.
     try:
         ip = ipaddress.ip_address(host)
-        if not allow_loopback and _ip_is_blocked(ip):
+        # When allow_loopback is True, only loopback is exempt; all other
+        # private ranges still block.
+        if _ip_is_blocked(ip) and not (allow_loopback and _is_loopback(ip)):
             raise ValueError("URL targets a private or loopback address")
     except ValueError as e:
         msg = str(e)
@@ -119,7 +132,7 @@ def validate_url(url: str, *, allow_loopback: bool = False) -> str:
                 resolved = ipaddress.ip_address(addr_str)
             except ValueError:
                 continue
-            if not allow_loopback and _ip_is_blocked(resolved):
+            if _ip_is_blocked(resolved) and not (allow_loopback and _is_loopback(resolved)):
                 raise ValueError(
                     f"URL resolves to a blocked address ({resolved})"
                 )

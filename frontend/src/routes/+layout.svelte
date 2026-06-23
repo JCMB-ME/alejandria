@@ -9,6 +9,7 @@
   import Toaster from '$components/Toaster.svelte';
   import ScraperNotifier from '$components/ScraperNotifier.svelte';
   import ConfirmDialog from '$components/ConfirmDialog.svelte';
+  import SecurityBanner from '$components/SecurityBanner.svelte';
 
   import { initLanguage } from '$stores/i18n';
   import { confirmRequest, resolveConfirm } from '$stores/confirm';
@@ -72,6 +73,7 @@
 
 <Toaster />
 <ScraperNotifier />
+<SecurityBanner />
 <ConfirmDialog request={$confirmRequest} onResolve={resolveConfirm} />
 
 {#if $user}

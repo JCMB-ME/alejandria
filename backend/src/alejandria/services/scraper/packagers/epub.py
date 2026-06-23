@@ -19,7 +19,6 @@ from ebooklib import epub
 
 from alejandria.services.scraper.image_fetch import FetchedImage
 
-
 _IMG_EXT_RE = re.compile(r"\.(jpe?g|png|webp|gif|bmp|tiff?)$", re.IGNORECASE)
 
 
@@ -109,7 +108,7 @@ async def build_epub(
             f'<body><div style="margin:0;padding:0;text-align:center;">'
             f'<img src="images/{filename}" alt=""/>'
             f'</div></body></html>'
-        ).encode("utf-8")
+        ).encode()
         book.add_item(chapter)
         chapters.append(chapter)
 

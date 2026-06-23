@@ -11,12 +11,11 @@ Schema reference: https://manual.calibre-ebook.com/develop.html#the-catalog-api
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -30,8 +29,8 @@ from alejandria.schemas.book import (
     SeriesInfo,
     TagInfo,
 )
-
 from alejandria.utils.log import get_logger
+
 logger = get_logger(__name__)
 
 
@@ -393,7 +392,7 @@ class CalibreDB:
             total_series=total_series,
             total_size_bytes=size_row["s"] if size_row else 0,
             formats=formats,
-            last_scan=last_scan or datetime.now(timezone.utc),
+            last_scan=last_scan or datetime.now(UTC),
         )
 
     # -----------------------------------------------------------------------
@@ -702,7 +701,7 @@ _db: CalibreDB | None = None
 
 def get_calibre_db() -> CalibreDB:
     """Get a singleton CalibreDB instance."""
-    global _db  # noqa: PLW0603
+    global _db
     if _db is None:
         _db = CalibreDB()
     return _db

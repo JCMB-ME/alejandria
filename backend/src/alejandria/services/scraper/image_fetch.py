@@ -11,10 +11,12 @@ from __future__ import annotations
 import imghdr
 from dataclasses import dataclass
 from io import BytesIO
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import aiohttp
 from PIL import Image
+
+from alejandria.services.scraper.ssrf import validate_url
 
 
 @dataclass
@@ -51,7 +53,7 @@ def _guess_ext(content_type: str, url: str, body: bytes) -> str:
         kind = imghdr.what(None, h=body)
         if kind:
             return _EXT_FOR_TYPE.get(kind, kind)
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     # Fall back to URL path
     path = urlsplit(url).path
@@ -66,11 +68,15 @@ async def fetch_image(
     *,
     max_bytes: int = 50 * 1024 * 1024,
     max_dimension_px: int = 6000,
+    allow_loopback: bool = False,
 ) -> FetchedImage:
     """Download an image into memory, validating size and dimensions.
 
     Raises ValueError on any cap violation. The bytes returned have NOT been
     decoded to a bitmap (Pillow only read the header).
+
+    `allow_loopback` is False in production. Tests that spin up a local
+    aiohttp fixture on 127.0.0.1 must pass True.
     """
     # Strip ``&context=...`` (and similar YupManga quirks) before hitting
     # the network. YupManga's reader renders page 30 with an image src
@@ -97,21 +103,38 @@ async def fetch_image(
     buf = BytesIO()
     bytes_on_wire = 0
     content_type = ""
-    async with session.get(url, allow_redirects=True) as resp:
-        resp.raise_for_status()
-        content_type = resp.headers.get("Content-Type", "")
-        cl = resp.headers.get("Content-Length")
-        if cl and cl.isdigit() and int(cl) > max_bytes:
-            raise ValueError(
-                f"Image too large: Content-Length {cl} > {max_bytes}"
-            )
-        async for chunk in resp.content.iter_chunked(64 * 1024):
-            bytes_on_wire += len(chunk)
-            if bytes_on_wire > max_bytes:
-                raise ValueError(
-                    f"Image exceeded max_bytes ({max_bytes}) during download"
+    # Validate the initial URL.
+    current_url = validate_url(url, allow_loopback=allow_loopback)
+    # Manual redirect loop so we re-run SSRF validation on every Location.
+    MAX_REDIRECTS = 5
+    for _ in range(MAX_REDIRECTS + 1):
+        async with session.get(current_url, allow_redirects=False) as resp:
+            if resp.status in (301, 302, 303, 307, 308):
+                location = resp.headers.get("Location")
+                if not location:
+                    raise ValueError(f"Redirect with no Location header from {current_url}")
+                # Resolve relative redirects and re-validate.
+                current_url = validate_url(
+                    urljoin(current_url, location), allow_loopback=allow_loopback,
                 )
-            buf.write(chunk)
+                continue
+            resp.raise_for_status()
+            content_type = resp.headers.get("Content-Type", "")
+            cl = resp.headers.get("Content-Length")
+            if cl and cl.isdigit() and int(cl) > max_bytes:
+                raise ValueError(
+                    f"Image too large: Content-Length {cl} > {max_bytes}"
+                )
+            async for chunk in resp.content.iter_chunked(64 * 1024):
+                bytes_on_wire += len(chunk)
+                if bytes_on_wire > max_bytes:
+                    raise ValueError(
+                        f"Image exceeded max_bytes ({max_bytes}) during download"
+                    )
+                buf.write(chunk)
+            break
+    else:
+        raise ValueError(f"Too many redirects from {url}")
 
     body = buf.getvalue()
     if not body:
@@ -122,7 +145,7 @@ async def fetch_image(
     try:
         with Image.open(BytesIO(body)) as im:
             width, height = im.size
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         # Not a parseable image — let the packager complain later.
         width = height = None
         if "cannot identify" not in str(e).lower() and "format" not in str(e).lower():

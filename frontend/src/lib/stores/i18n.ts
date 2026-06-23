@@ -234,6 +234,8 @@ export const translations = {
     scraper_notice_error_label: 'Error details',
     scraper_notice_close: 'Close',
     scraper_notice_view: 'View result',
+    // Security banner
+    security_banner_howto: 'How',
   },
   es: {
     // General / Layout
@@ -463,6 +465,8 @@ export const translations = {
     scraper_notice_error_label: 'Detalles del error',
     scraper_notice_close: 'Cerrar',
     scraper_notice_view: 'Ver resultado',
+    // Banner de seguridad
+    security_banner_howto: 'Cómo',
   }
 };
 

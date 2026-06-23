@@ -2,26 +2,25 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+from pathlib import Path
 from typing import Annotated
 
-from pathlib import Path
-import shutil
-import os
-
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
+from alejandria.auth.dependencies import get_current_user, get_optional_user
+from alejandria.config import get_settings
+from alejandria.db import get_db
+from alejandria.models.annotation import Annotation
+from alejandria.models.highlight import Highlight
 from alejandria.models.progress import ReadingProgress
 from alejandria.models.shelf import ShelfBook
-from alejandria.models.highlight import Highlight
-from alejandria.models.annotation import Annotation
-from alejandria.auth.dependencies import get_optional_user, get_current_user
-from alejandria.db import get_db
 from alejandria.models.user import User
-from alejandria.schemas.book import BookDetail, BookListResponse, BookSummary
+from alejandria.schemas.book import BookDetail, BookListResponse
 from alejandria.services.calibre_db import get_calibre_db
 from alejandria.services.scanner import get_scanner
-from alejandria.config import get_settings
 from alejandria.utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -69,7 +68,7 @@ async def get_book(
     book = calibre.get_book(book_id)
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
-    return calibre._to_detail(book)  # noqa: SLF001
+    return calibre._to_detail(book)
 
 
 @router.get("/{book_id}/formats")
@@ -96,23 +95,23 @@ async def upload_book(
 ):
     """Upload a new book and import it into the Calibre library."""
     settings = get_settings()
-    
+
     # Check file extension
     ext = Path(file.filename).suffix.lower()
     allowed = {".epub", ".pdf", ".mobi", ".azw3", ".azw", ".fb2", ".djvu", ".rtf", ".docx", ".txt",
                ".html", ".htmlz", ".lit", ".lrf", ".odt", ".cbz", ".cbr"}
     if ext not in allowed:
         raise HTTPException(status_code=400, detail=f"Unsupported file format: {ext}")
-        
+
     # Save file to a temporary uploads directory
     temp_dir = settings.caches_path / "uploads"
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / file.filename
-    
+
     try:
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-            
+
         scanner = get_scanner()
         res = await scanner.add_book(temp_path)
         if res.get("exit_code") != 0:
@@ -128,7 +127,7 @@ async def upload_book(
                 os.remove(temp_path)
             except Exception:
                 pass
-                
+
     return {"status": "success", "message": "Book uploaded and imported successfully"}
 
 
@@ -192,7 +191,7 @@ async def update_book(
 
     settings = get_settings()
     fields = {}
-    
+
     if title is not None:
         fields["title"] = title
     if authors is not None:
@@ -244,7 +243,7 @@ async def update_book(
                     status_code=500,
                     detail=f"Failed to update metadata: {res.get('stderr') or res.get('error')}"
                 )
-            
+
             # Invalidate cover cache if metadata or cover was modified
             cover_dir = settings.caches_path / "covers" / str(book_id)
             if cover_dir.exists():

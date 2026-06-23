@@ -9,8 +9,8 @@ from PIL import Image
 
 from alejandria.config import get_settings
 from alejandria.services.calibre_db import get_calibre_db
-
 from alejandria.utils.log import get_logger
+
 logger = get_logger(__name__)
 
 # Cover size variants (width in pixels)
@@ -159,7 +159,7 @@ def get_cover(book_id: int, size: str = "medium") -> bytes | None:
     if not fmt_path:
         return None
     fmt, path = fmt_path
-    
+
     # Try reading cover.jpg directly from the book folder first (Calibre extracts it by default)
     cover_file = path.parent / "cover.jpg"
     if cover_file.exists():

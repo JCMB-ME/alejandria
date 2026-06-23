@@ -272,4 +272,14 @@ export const scraper = {
     }),
 };
 
+// --- Security ---
+export interface SecurityStatus {
+  defaults_in_use: boolean;
+  reasons: string[];
+}
+
+export const security = {
+  status: () => api.get<SecurityStatus>('/api/security/status'),
+};
+
 export default api;

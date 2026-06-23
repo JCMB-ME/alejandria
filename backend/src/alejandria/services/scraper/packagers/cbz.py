@@ -12,7 +12,6 @@ from pathlib import Path
 
 from alejandria.services.scraper.image_fetch import FetchedImage
 
-
 _IMG_EXT_RE = re.compile(r"\.(jpe?g|png|webp|gif|bmp|tiff?)$", re.IGNORECASE)
 
 

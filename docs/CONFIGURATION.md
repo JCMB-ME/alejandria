@@ -89,6 +89,14 @@ All scraper settings use the `ALEJANDRIA_SCRAPER_*` prefix. See
 
 Tested with: Authentik, Authelia, Keycloak, Pocket ID.
 
+## Security
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ALEJANDRIA_ALLOW_INSECURE_DEFAULTS` | `false` | Escape hatch for local dev / tests. The app refuses to boot with the default secret or admin password unless this is set to `true`. Never set this in production. |
+| `ALEJANDRIA_COOKIE_SECURE` | `true` | Whether the session cookie sets the `Secure` flag (requires HTTPS). Set to `false` for local HTTP dev. |
+| `ALEJANDRIA_OPDS_REQUIRE_AUTH` | `true` | Whether OPDS requires authentication. Set `false` ONLY for trusted LAN deployments (e.g. KOReader on the same network). The app will log a loud warning on every startup while this is in effect. |
+
 ## Adding books
 
 ### Option A: copy files in

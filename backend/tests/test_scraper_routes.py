@@ -61,6 +61,10 @@ def test_create_job_validates_ssrf(client: TestClient):
 
 
 def test_create_job_requires_auth(client: TestClient):
+    # A bare POST without CSRF cookie/header is rejected with 403 by the
+    # CSRF middleware (which runs before the auth dependency). To assert
+    # the underlying auth gate, send a matching CSRF token so the
+    # middleware passes and the auth dependency raises 401.
     r = client.post(
         "/api/scraper/jobs",
         json={
@@ -68,5 +72,6 @@ def test_create_job_requires_auth(client: TestClient):
             "formats": ["PDF"],
             "destinations": ["download"],
         },
+        headers={"X-CSRF-Token": "x", "Cookie": "alejandria_csrf=x"},
     )
     assert r.status_code == 401

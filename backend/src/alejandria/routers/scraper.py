@@ -154,20 +154,20 @@ async def test_adapter(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Ensure browser is up. This may take a few seconds the first time.
-    await mgr._ensure_browser()  # noqa: SLF001
-    if mgr._browser is None:  # noqa: SLF001
+    await mgr._ensure_browser()
+    if mgr._browser is None:
         raise HTTPException(status_code=503, detail="Browser unavailable")
 
-    adapter = mgr._pick_adapter(url)  # noqa: SLF001
+    adapter = mgr._pick_adapter(url)
     if payload.adapter_name:
-        for a in mgr._runtime_adapters:  # noqa: SLF001
+        for a in mgr._runtime_adapters:
             if a.name == f"yaml:{payload.adapter_name}":
                 adapter = a
                 break
 
     try:
-        snapshot = await adapter.fetch_page(mgr._browser, url)  # noqa: SLF001
-    except Exception as e:  # noqa: BLE001
+        snapshot = await adapter.fetch_page(mgr._browser, url)
+    except Exception as e:
         raise HTTPException(status_code=502, detail=f"Adapter fetch failed: {e}") from e
 
     # Pull image candidates with sizes by re-running the size inference
@@ -181,12 +181,12 @@ async def test_adapter(
     # reported candidates match what the scraper would actually follow.
     next_candidates: list[NextCandidate] = []
     try:
-        page = await mgr._browser.new_page()  # noqa: SLF001
+        page = await mgr._browser.new_page()
         try:
             await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
             try:
                 await page.wait_for_load_state("networkidle", timeout=10_000)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
             # Probe a few candidate strategies ourselves so the test panel
@@ -233,7 +233,7 @@ async def test_adapter(
             )
 
             # Ask the adapter what it would actually follow.
-            chosen = await adapter.next_url(page, url, 1)  # noqa: SLF001
+            chosen = await adapter.next_url(page, url, 1)
             for entry in probed or []:
                 # Filter out candidates whose href doesn't share the
                 # current URL's path — these are usually unrelated nav
@@ -251,9 +251,9 @@ async def test_adapter(
         finally:
             try:
                 await page.close()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
-    except Exception:  # noqa: BLE001
+    except Exception:
         # Non-fatal — return what we have.
         pass
 

@@ -53,9 +53,7 @@ https://alejandria.yourdomain.com/opds
 
 ## Authentication
 
-OPDS clients use HTTP Basic Authentication. Make sure to enter the same username and password you use to log into Alejandría.
-
-For better security, put Alejandría behind HTTPS (reverse proxy) so credentials aren't sent in clear text.
+OPDS requires authentication by default. Clients (KOReader, Calibre Companion) use HTTP Basic Auth. The `ALEJANDRIA_OPDS_REQUIRE_AUTH` opt-out is for trusted LANs only.
 
 ## Search
 

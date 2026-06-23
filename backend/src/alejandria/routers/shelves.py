@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -135,7 +135,7 @@ async def get_shelf(
     for bid in book_ids[:100]:
         book = calibre.get_book(bid)
         if book:
-            books.append(calibre._to_summary(book))  # noqa: SLF001
+            books.append(calibre._to_summary(book))
     return ShelfWithBooks(
         id=shelf.id, user_id=shelf.user_id, name=shelf.name, slug=shelf.slug,
         description=shelf.description, icon=shelf.icon, color=shelf.color,

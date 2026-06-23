@@ -48,7 +48,9 @@ async def image_server():
 @pytest.mark.asyncio
 async def test_fetches_small_image(image_server: str):
     async with aiohttp.ClientSession() as session:
-        f = await fetch_image(session, f"{image_server}/small.png")
+        f = await fetch_image(
+            session, f"{image_server}/small.png", allow_loopback=True,
+        )
     assert f.width == 100
     assert f.height == 100
     assert f.content_type == "image/png"
@@ -59,5 +61,37 @@ async def test_fetches_small_image(image_server: str):
 async def test_rejects_huge_dimensions(image_server: str):
     async with aiohttp.ClientSession() as session:
         with pytest.raises(ValueError) as exc:
-            await fetch_image(session, f"{image_server}/huge.png", max_dimension_px=6000)
+            await fetch_image(
+                session,
+                f"{image_server}/huge.png",
+                max_dimension_px=6000,
+                allow_loopback=True,
+            )
     assert "too large" in str(exc.value).lower() or "pixels" in str(exc.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_fetch_image_rejects_redirect_to_private_ip():
+    """fetch_image must reject a 302 redirect to a private IP."""
+    async def redirect_handler(request: web.Request) -> web.Response:
+        return web.Response(status=302, headers={"Location": "http://192.168.1.1/admin"})
+
+    app = web.Application()
+    app.router.add_get("/img.jpg", redirect_handler)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = site._server.sockets[0].getsockname()[1]  # type: ignore[attr-defined]
+    try:
+        async with aiohttp.ClientSession() as session:
+            with pytest.raises(ValueError):
+                await fetch_image(
+                    session,
+                    f"http://127.0.0.1:{port}/img.jpg",
+                    max_bytes=1024 * 1024,
+                    allow_loopback=True,
+                )
+    finally:
+        await runner.cleanup()
+

@@ -8,12 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from alejandria.auth.dependencies import get_current_user, require_admin
+from alejandria.auth.dependencies import require_admin
+from alejandria.auth.security import hash_password
 from alejandria.config import get_settings
 from alejandria.db import get_db
-from alejandria.models.user import User, UserRole
+from alejandria.models.user import User
 from alejandria.schemas.auth import UserCreate, UserRead, UserUpdate
-from alejandria.auth.security import hash_password
 
 router = APIRouter()
 

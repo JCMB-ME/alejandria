@@ -56,7 +56,7 @@ class _RuntimeYamlAdapter:
             await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
             try:
                 await page.wait_for_load_state("networkidle", timeout=15_000)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
             imgs: list[str] = await page.evaluate(
                 """
@@ -74,7 +74,7 @@ class _RuntimeYamlAdapter:
         finally:
             try:
                 await page.close()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
     async def next_url(
@@ -93,7 +93,7 @@ class _RuntimeYamlAdapter:
                 )
                 if href:
                     return href
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
         if self.raw.pagination_style == "url_increment":
             m = re.search(r"/(\d+)/?$", current_url)

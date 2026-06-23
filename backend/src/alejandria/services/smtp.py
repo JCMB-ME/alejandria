@@ -8,8 +8,8 @@ from pathlib import Path
 import aiosmtplib
 
 from alejandria.config import get_settings
-
 from alejandria.utils.log import get_logger
+
 logger = get_logger(__name__)
 
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -125,7 +125,7 @@ class ScraperManager:
                 count=len(self._runtime_adapters),
                 path=str(settings.scraper_adapters_file),
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error("scraper_yaml_adapters_load_failed", error=str(e))
             self._yaml_adapters = []
             self._runtime_adapters = []
@@ -146,32 +146,32 @@ class ScraperManager:
         for t in list(self._tasks.values()):
             try:
                 await t
-            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            except (asyncio.CancelledError, Exception):
                 pass
         self._tasks.clear()
         if self._pump_task:
             self._pump_task.cancel()
             try:
                 await self._pump_task
-            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            except (asyncio.CancelledError, Exception):
                 pass
             self._pump_task = None
         if self._http_session is not None:
             try:
                 await self._http_session.close()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
             self._http_session = None
         if self._browser is not None:
             try:
                 await self._browser.close()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
             self._browser = None
         if self._playwright_ctx is not None:
             try:
                 await self._playwright_ctx.__aexit__(None, None, None)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
             self._playwright_ctx = None
         logger.info("scraper_manager_stopped")
@@ -209,7 +209,7 @@ class ScraperManager:
         if job.status in (ScrapeJobStatus.DONE, ScrapeJobStatus.FAILED, ScrapeJobStatus.CANCELLED):
             return job
         job.status = ScrapeJobStatus.CANCELLED
-        job.completed_at = datetime.now(timezone.utc)
+        job.completed_at = datetime.now(UTC)
         db.commit()
         db.refresh(job)
         return job
@@ -258,7 +258,7 @@ class ScraperManager:
             for r in rows:
                 r.status = ScrapeJobStatus.FAILED
                 r.error = "Server restarted while job was running"
-                r.completed_at = datetime.now(timezone.utc)
+                r.completed_at = datetime.now(UTC)
             if rows:
                 db.commit()
                 logger.info("scraper_recovered_orphaned_jobs", count=len(rows))
@@ -325,7 +325,7 @@ class ScraperManager:
                     await page.goto(
                         seed_url, wait_until="domcontentloaded", timeout=30_000
                     )
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     logger.warning(
                         "scraper_token_refresh_navigate_failed",
                         attempt=attempt,
@@ -337,7 +337,7 @@ class ScraperManager:
                     await page.wait_for_load_state(
                         "domcontentloaded", timeout=5_000
                     )
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
 
                 # 1. Did the site put a token in the address bar?
@@ -412,7 +412,7 @@ class ScraperManager:
             finally:
                 try:
                     await page.close()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
 
         return None
@@ -430,7 +430,7 @@ class ScraperManager:
             if settings.scraper_proxy:
                 launch_kwargs["proxy"] = {"server": settings.scraper_proxy}
             self._browser = await self._playwright_ctx.chromium.launch(**launch_kwargs)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.error("scraper_browser_start_failed", error=str(e))
             self._browser = None
             return
@@ -459,11 +459,11 @@ class ScraperManager:
                             continue
                         task = asyncio.create_task(self._run_job(job.id))
                         self._tasks[job.id] = task
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 logger.error("scraper_pump_iteration_failed", error=str(e))
             try:
                 await asyncio.wait_for(self._stopped.wait(), timeout=_PUMP_INTERVAL_S)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             else:
                 return
@@ -482,7 +482,7 @@ class ScraperManager:
                             return
                         job.status = ScrapeJobStatus.FAILED
                         job.error = "Browser could not start (check Playwright install)"
-                        job.completed_at = datetime.now(timezone.utc)
+                        job.completed_at = datetime.now(UTC)
                         db.commit()
                     return
 
@@ -494,7 +494,7 @@ class ScraperManager:
                     if job.status == ScrapeJobStatus.CANCELLED:
                         return
                     job.status = ScrapeJobStatus.SCRAPING
-                    job.started_at = datetime.now(timezone.utc)
+                    job.started_at = datetime.now(UTC)
                     job.error = None
                     job.progress_pct = 0.0
                     db.commit()
@@ -538,7 +538,7 @@ class ScraperManager:
                                 job_id=job_id,
                                 title=title,
                             )
-                    except Exception as e:  # noqa: BLE001
+                    except Exception as e:
                         logger.warning(
                             "scraper_title_discovery_failed", error=str(e)
                         )
@@ -690,7 +690,7 @@ class ScraperManager:
                                 if job:
                                     job.status = ScrapeJobStatus.FAILED
                                     job.error = msg
-                                    job.completed_at = datetime.now(timezone.utc)
+                                    job.completed_at = datetime.now(UTC)
                                     db.commit()
                             return
                         # Not bounced — the page was just empty. Could be
@@ -730,7 +730,7 @@ class ScraperManager:
                         await page.goto(current_url, wait_until="domcontentloaded", timeout=30_000)
                         try:
                             await page.wait_for_load_state("domcontentloaded", timeout=5_000)
-                        except Exception:  # noqa: BLE001
+                        except Exception:
                             pass
 
                         # Filter out image srcs we've already collected.
@@ -807,7 +807,7 @@ class ScraperManager:
                                         if job:
                                             job.status = ScrapeJobStatus.FAILED
                                             job.error = "Job exceeded max total size"
-                                            job.completed_at = datetime.now(timezone.utc)
+                                            job.completed_at = datetime.now(UTC)
                                             db.commit()
                                     return
                                 chunk = new_image_urls[chunk_start : chunk_start + image_concurrency]
@@ -859,7 +859,7 @@ class ScraperManager:
                         else:
                             try:
                                 next_url = await adapter.next_url(page, current_url, page_index - 1)
-                            except Exception as e:  # noqa: BLE001
+                            except Exception as e:
                                 logger.warning("scraper_next_url_failed", error=str(e))
                                 next_url = None
 
@@ -897,7 +897,7 @@ class ScraperManager:
                     finally:
                         try:
                             await page.close()
-                        except Exception:  # noqa: BLE001
+                        except Exception:
                             pass
 
                     # Inter-page delay
@@ -958,7 +958,7 @@ class ScraperManager:
                                 fmt=fmt,
                                 stderr=result.get("stderr", "")[:500],
                             )
-                    except Exception as e:  # noqa: BLE001
+                    except Exception as e:
                         logger.error("scraper_import_failed", fmt=fmt, error=str(e))
 
                 # Done
@@ -968,7 +968,7 @@ class ScraperManager:
                         return
                     job.status = ScrapeJobStatus.DONE
                     job.progress_pct = 100.0
-                    job.completed_at = datetime.now(timezone.utc)
+                    job.completed_at = datetime.now(UTC)
                     job.output_paths_json = json.dumps(out_paths)
                     if imported:
                         job.imported_book_ids_json = json.dumps(imported)
@@ -978,7 +978,7 @@ class ScraperManager:
             except asyncio.CancelledError:
                 self._mark_failed(job_id, "Cancelled by server shutdown")
                 raise
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 logger.exception("scraper_job_error", job_id=job_id, error=str(e))
                 self._mark_failed(job_id, str(e) or e.__class__.__name__)
             finally:
@@ -993,7 +993,7 @@ class ScraperManager:
                 return
             job.status = ScrapeJobStatus.FAILED
             job.error = error[:2000]
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = datetime.now(UTC)
             db.commit()
 
 
@@ -1001,7 +1001,7 @@ _manager: ScraperManager | None = None
 
 
 def get_scraper_manager() -> ScraperManager:
-    global _manager  # noqa: PLW0603
+    global _manager
     if _manager is None:
         _manager = ScraperManager()
     return cast(ScraperManager, _manager)

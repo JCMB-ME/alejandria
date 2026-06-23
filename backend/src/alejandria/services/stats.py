@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from alejandria.models.progress import ReadingProgress
-from alejandria.models.user import User
-from alejandria.schemas.book import LibraryStats
 
 
 class StatsService:
@@ -56,7 +53,7 @@ class StatsService:
             return {"current_streak": 0, "longest_streak": 0}
 
         day_dates = [datetime.strptime(str(d), "%Y-%m-%d").date() for d in days]
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now(UTC).date()
 
         # Current streak
         current = 0
@@ -98,7 +95,7 @@ class StatsService:
 
     def daily_reading(self, db: Session, user_id: int, days: int = 30) -> list[dict]:
         """Daily reading minutes for the last N days."""
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff = datetime.now(UTC) - timedelta(days=days)
         # Approximate: count progress updates per day as proxy
         rows = db.execute(
             select(

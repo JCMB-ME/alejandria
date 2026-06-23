@@ -12,7 +12,6 @@ from typing import Any
 
 from alejandria.services.scraper.adapters.base import PageSnapshot
 
-
 _NEXT_TEXT_RE = re.compile(
     r"^(next|siguiente|siguiente\s+p[áa]gina|next\s+page|→|>)",
     re.IGNORECASE,
@@ -37,7 +36,7 @@ class GenericAdapter:
                 # dozens of in-flight image requests. domcontentloaded
                 # is plenty — images stream in after.
                 await page.wait_for_load_state("domcontentloaded", timeout=5_000)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
             candidates = await page.evaluate(
                 """
@@ -85,7 +84,7 @@ class GenericAdapter:
         finally:
             try:
                 await page.close()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
     async def discover_title(
@@ -103,7 +102,7 @@ class GenericAdapter:
             await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
             try:
                 await page.wait_for_load_state("domcontentloaded", timeout=5_000)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
             title = await page.evaluate(
                 """
@@ -134,12 +133,12 @@ class GenericAdapter:
             if len(title) > 200:
                 title = title[:200].rstrip() + "…"
             return title
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         finally:
             try:
                 await page.close()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
     async def next_url(
@@ -249,7 +248,7 @@ class GenericAdapter:
             candidate = _same_context(next_href)
             if candidate:
                 return candidate
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
         # 4. hash change after scroll — best-effort

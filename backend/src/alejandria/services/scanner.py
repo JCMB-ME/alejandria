@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
-import subprocess
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,9 +12,8 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from alejandria.config import get_settings
-from alejandria.services.calibre_db import get_calibre_db
-
 from alejandria.utils.log import get_logger
+
 logger = get_logger(__name__)
 
 
@@ -52,7 +49,7 @@ class LibraryScanner:
         self._observer.start()
         # Record the initial scan time so /api/library/stats has a real value
         # before the first manual rescan or library change.
-        self._last_scan = datetime.now(timezone.utc)
+        self._last_scan = datetime.now(UTC)
         logger.info("library_scanner_started", path=str(self._library_root))
 
     def stop(self) -> None:
@@ -87,7 +84,7 @@ class LibraryScanner:
 
         result: dict[str, Any] = {
             "status": "started",
-            "started_at": datetime.now(timezone.utc).isoformat(),
+            "started_at": datetime.now(UTC).isoformat(),
         }
 
         try:
@@ -104,7 +101,7 @@ class LibraryScanner:
             result["stdout"] = stdout.decode("utf-8", errors="ignore")[:2000]
             result["stderr"] = stderr.decode("utf-8", errors="ignore")[:2000]
             result["status"] = "completed" if proc.returncode == 0 else "error"
-            self._last_scan = datetime.now(timezone.utc)
+            self._last_scan = datetime.now(UTC)
         except FileNotFoundError:
             result["status"] = "calibre_not_found"
             result["error"] = f"calibredb not found at {calibre_bin}"
@@ -212,7 +209,7 @@ class _LibraryEventHandler(FileSystemEventHandler):
         if event.is_directory:
             return
         path = Path(event.src_path)
-        
+
         # ONLY auto-import files that are dropped directly in the library root folder.
         # This prevents infinite loops and double-imports when calibredb writes/renames files in library subfolders.
         if path.parent.resolve() != self.scanner._library_root.resolve():
@@ -262,7 +259,7 @@ _scanner: LibraryScanner | None = None
 
 
 def get_scanner() -> LibraryScanner:
-    global _scanner  # noqa: PLW0603
+    global _scanner
     if _scanner is None:
         _scanner = LibraryScanner()
     return _scanner

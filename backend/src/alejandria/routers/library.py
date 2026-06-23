@@ -5,12 +5,10 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 
 from alejandria.auth.dependencies import get_optional_user
-from alejandria.db import get_db
 from alejandria.models.user import User
-from alejandria.schemas.book import BookSummary, LibraryStats, SeriesInfo, TagInfo
+from alejandria.schemas.book import LibraryStats, SeriesInfo, TagInfo
 from alejandria.services.calibre_db import get_calibre_db
 from alejandria.services.scanner import get_scanner
 
