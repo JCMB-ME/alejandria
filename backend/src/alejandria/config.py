@@ -47,7 +47,11 @@ class Settings(BaseSettings):
     config_path: Path = Path("/config")
     caches_path: Path = Path("/config/caches")
     db_path: Path = Path("/config/alejandria.db")
-    static_path: Path = Path("/app/frontend/build")
+    # SvelteKit adapter-static writes the built site to `build/client/`
+    # (see svelte.config.js: pages='build/client', assets='build/client').
+    # The Dockerfile copies that directory to /app/frontend/build, so the
+    # served index.html lives at /app/frontend/build/client/index.html.
+    static_path: Path = Path("/app/frontend/build/client")
 
     # Calibre
     enable_calibre: bool = True
