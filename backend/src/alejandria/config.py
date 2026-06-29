@@ -115,13 +115,15 @@ class Settings(BaseSettings):
             return v
         return v.resolve() if not v.is_absolute() else v
 
+    # An empty secret_key is the first-time-setup signal: the entrypoint
+    # script auto-generates one and persists it to /config/.alejandria-secret-key
+    # before the backend starts. Same flow as admin_password below.
     _DEFAULT_SECRET_VALUES: ClassVar[frozenset[str]] = frozenset({
         "change-me-in-production-please",
         "change-me-to-a-long-random-string",
         "changeme",
-        "",
     })
-    _DEFAULT_PASSWORD_VALUES: ClassVar[frozenset[str]] = frozenset({"changeme", ""})
+    _DEFAULT_PASSWORD_VALUES: ClassVar[frozenset[str]] = frozenset({"changeme"})
 
     @field_validator("secret_key", mode="after")
     @classmethod
@@ -135,6 +137,13 @@ class Settings(BaseSettings):
                 "insecure_defaults_override_active",
                 hint="ALEJANDRIA_ALLOW_INSECURE_DEFAULTS=true is set; do not run this in production.",
             )
+            return v
+        # An empty secret_key is allowed because the entrypoint
+        # generates one and exports it as an env var before the
+        # backend process starts. If the backend is somehow started
+        # directly (not via docker-compose), this still won't crash —
+        # but the security banner will tell the operator.
+        if v == "":
             return v
         if v in cls._DEFAULT_SECRET_VALUES:
             raise ValueError(
@@ -157,6 +166,14 @@ class Settings(BaseSettings):
         if os.environ.get("ALEJANDRIA_ALLOW_INSECURE_DEFAULTS", "").lower() in (
             "1", "true", "yes"
         ):
+            return v
+        # An empty admin_password is the first-time-setup signal: the
+        # SPA's /register page creates the first admin user on first
+        # boot. Rejecting "" here broke the install experience (the
+        # app refused to start before the user could even register).
+        # The actual admin password lives in the users table (hashed)
+        # and is set by whoever completes the registration form.
+        if v == "":
             return v
         if v in cls._DEFAULT_PASSWORD_VALUES:
             raise ValueError(

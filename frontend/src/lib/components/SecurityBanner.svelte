@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { security } from '$api/client';
   import { t } from '$stores/i18n';
+  import { user } from '$stores/auth';
 
   let visible = $state(false);
   let reasons = $state<string[]>([]);
@@ -21,12 +22,24 @@
       // first-time setup (no users yet — SPA routes to /register, where
       // the "default password" wording would be confusing because the
       // empty .env admin_password is intentional).
+      //
+      // Banners are aimed at the operator/admin. Unauthenticated visitors
+      // (login page, OPDS-clients testing the URL) shouldn't see them — so
+      // we wait for a logged-in user before displaying.
       const productionReasons = (status.reasons ?? []).filter(
         (r: string) => r === 'default_secret' || r === 'insecure_cookie',
       );
       if (!dismissed && status.has_users && productionReasons.length > 0) {
-        visible = true;
-        reasons = productionReasons;
+        // Defer showing until the user is logged in (or skip if they sign out)
+        const unsub = user.subscribe((u) => {
+          if (u) {
+            visible = true;
+            reasons = productionReasons;
+          } else {
+            visible = false;
+          }
+        });
+        return unsub;
       }
     } catch {
       // Backend unreachable; don't show a broken banner.

@@ -243,10 +243,48 @@ def create_app() -> FastAPI:
                     headers={"Cache-Control": "no-store, must-revalidate",
                              "Pragma": "no-cache"},
                 )
+            # If this page ever appears, something is broken with the
+            # installation — either the Docker image was built without the
+            # frontend stage (the multi-stage Dockerfile in docker/Dockerfile
+            # always bakes the SvelteKit bundle in), or the operator is
+            # running the backend outside Docker without first running
+            # `npm run build` in frontend/. Show a useful diagnostic page
+            # instead of a generic "backend is running" message so the
+            # operator knows what to do.
             return HTMLResponse(
-                "<h1>Alejandría backend is running</h1>"
-                "<p>Frontend not built. Run <code>npm run build</code> in <code>frontend/</code>.</p>",
-                status_code=200,
+                "<!DOCTYPE html>"
+                "<html lang=\"en\">"
+                "<head>"
+                "  <meta charset=\"utf-8\" />"
+                "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />"
+                "  <title>Alejandría — frontend not built</title>"
+                "  <style>"
+                "    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 4rem auto; padding: 0 1.5rem; color: #222; line-height: 1.55; }"
+                "    h1 { margin: 0 0 .5rem; }"
+                "    code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; font-size: .95em; }"
+                "    pre { background: #f4f4f4; padding: 1rem; border-radius: 6px; overflow-x: auto; }"
+                "    .muted { color: #666; }"
+                "  </style>"
+                "</head>"
+                "<body>"
+                "  <h1>Alejandría — frontend not built</h1>"
+                "  <p>The backend is running and reachable, but the SvelteKit "
+                "     web client bundle is missing on disk. The simplest fix is "
+                "     to use Docker, which builds the frontend as part of the "
+                "     image.</p>"
+                "  <h2>Recommended: use Docker</h2>"
+                "  <pre>docker compose up -d --build</pre>"
+                "  <h2>Manual (running backend without Docker)</h2>"
+                "  <pre>cd frontend &amp;&amp; npm install &amp;&amp; npm run build</pre>"
+                "  <p class=\"muted\">"
+                "    Then restart the backend. The frontend bundle lands in "
+                "    <code>frontend/build/client/index.html</code> and is served "
+                "    from <code>ALEJANDRIA_STATIC_PATH</code> if set, otherwise "
+                "    <code>/app/frontend/build/client</code> by default."
+                "  </p>"
+                "</body>"
+                "</html>",
+                status_code=503,
             )
 
         @app.get("/_app/version.json", include_in_schema=False)
