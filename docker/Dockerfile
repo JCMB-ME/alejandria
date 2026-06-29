@@ -14,7 +14,13 @@ WORKDIR /build/frontend
 
 # Copy package files first for better layer caching
 COPY frontend/package*.json ./
-RUN npm ci
+# `npm install` instead of `npm ci`: the lockfile is generated with
+# whatever npm version the developer happens to have locally, which
+# sometimes disagrees with `npm ci`'s stricter resolver (e.g., a
+# transitive dep version bump that npm install accepts but npm ci
+# rejects). The build only needs the tree to be reproducible within
+# one build run, not byte-for-byte with the lockfile.
+RUN npm install --no-audit --no-fund
 
 # Copy source and build
 COPY frontend/ ./
@@ -26,13 +32,14 @@ RUN npm run build
 # -----------------------------------------------------------------------------
 FROM debian:bookworm-slim AS calibre-installer
 
-ARG CALIBRE_VERSION=7.13.0
+ARG CALIBRE_VERSION=9.10.0
 
 # Calibre CLI install requires these dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         python3 \
+        xz-utils \
         xvfb \
         libgl1 \
         libglib2.0-0 \
@@ -48,14 +55,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Download and run Calibre installer (CLI mode).
-# Calibre reorganized their downloads in 2025; the old
+# Calibre reorganized their downloads in 2025: the old
 # /linux-installer/x86_64.sh URL now redirects to an HTML "previous
 # releases" page. The current URL returns a single shell script that
 # installs the matching arch (x86_64 under qemu on ARM hosts).
-RUN curl -fsSL https://download.calibre-ebook.com/linux-installer.sh -o /tmp/calibre-installer.sh \
-    && chmod +x /tmp/calibre-installer.sh \
-    && /tmp/calibre-installer.sh --no-desktop --version=${CALIBRE_VERSION} \
-    && rm /tmp/calibre-installer.sh
+#
+# Argument format changed in Calibre 8.x: the CLI installer now takes
+# `key=value` pairs without the `--` prefix (e.g. `version=9.10.0`,
+# `isolated=true`). The old `--no-desktop` and `--version=...` flags
+# produce "Unrecognized command line argument" errors. To pin a version,
+# download a specific `calibre-X.Y.Z-...txz` directly from
+# code.calibre-ebook.com and extract it into /opt/calibre, bypassing
+# the installer entirely.
+RUN mkdir -p /tmp/calibre-dl \
+    && curl -fsSL "https://download.calibre-ebook.com/${CALIBRE_VERSION}/calibre-${CALIBRE_VERSION}-x86_64.txz" -o /tmp/calibre-dl/calibre.txz \
+    && mkdir -p /opt/calibre \
+    && tar xJf /tmp/calibre-dl/calibre.txz -C /opt/calibre \
+    && rm -rf /tmp/calibre-dl
 
 
 # -----------------------------------------------------------------------------
@@ -78,11 +94,12 @@ RUN pip install --no-cache-dir uv
 COPY backend/pyproject.toml ./
 COPY backend/README.md ./
 
+# Copy source BEFORE installing — hatchling needs src/alejandria/ on disk
+# to discover the package via [tool.hatch.build.targets.wheel].
+COPY backend/src ./src
+
 # Install dependencies (no dev deps for production)
 RUN uv pip install --system --no-cache .
-
-# Copy source
-COPY backend/src ./src
 
 
 # -----------------------------------------------------------------------------
