@@ -32,6 +32,7 @@ ARG CALIBRE_VERSION=7.13.0
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        python3 \
         xvfb \
         libgl1 \
         libglib2.0-0 \
@@ -46,8 +47,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libfontconfig1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Download and run Calibre installer (CLI mode)
-RUN curl -fsSL https://download.calibre-ebook.com/linux-installer/x86_64.sh -o /tmp/calibre-installer.sh \
+# Download and run Calibre installer (CLI mode).
+# Calibre reorganized their downloads in 2025; the old
+# /linux-installer/x86_64.sh URL now redirects to an HTML "previous
+# releases" page. The current URL returns a single shell script that
+# installs the matching arch (x86_64 under qemu on ARM hosts).
+RUN curl -fsSL https://download.calibre-ebook.com/linux-installer.sh -o /tmp/calibre-installer.sh \
     && chmod +x /tmp/calibre-installer.sh \
     && /tmp/calibre-installer.sh --no-desktop --version=${CALIBRE_VERSION} \
     && rm /tmp/calibre-installer.sh
